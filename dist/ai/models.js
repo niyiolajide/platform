@@ -10,5 +10,6 @@ exports.AI_MODELS = {
         'claude-haiku-4-5-20251001',
         'claude-haiku-4-5',
     ],
-    gemini: ['gemini-2.5-flash', 'gemini-2.5-flash-lite', 'gemini-2.0-flash'],
+    // Ordered best → cheapest; this order doubles as the default failure cascade.
+    gemini: ['gemini-2.5-pro', 'gemini-2.5-flash', 'gemini-2.5-flash-lite', 'gemini-2.0-flash'],
 };

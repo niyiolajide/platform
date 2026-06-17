@@ -2,6 +2,7 @@ import type Anthropic from '@anthropic-ai/sdk'
 import { getLogger, keys } from '../config'
 import { readAiSettings } from '../control/store'
 import { getAnthropic } from './anthropic'
+import { AI_MODELS } from './models'
 
 // ── Pluggable AI provider ─────────────────────────────────────────────────────
 // One interface over Claude (Anthropic) and Gemini (Google) so every app's
@@ -114,10 +115,29 @@ function genai(): import('@google/generative-ai').GoogleGenerativeAI | null {
   return genaiClient
 }
 
+// Failure cascade: try the configured primary + fallback first, then continue
+// down ALL known Gemini models (best → cheapest) so a model outage/quota/5xx on
+// one tier rolls down to the next instead of giving up. De-duplicated, order
+// preserved.
 function geminiModels(which?: 'main' | 'fast'): string[] {
   const s = readAiSettings()
   const primary = which === 'fast' ? s.geminiModelFast : s.geminiModel
-  return [...new Set([primary, s.geminiModelFallback].filter(Boolean))]
+  return [
+    ...new Set([primary, s.geminiModelFallback, ...AI_MODELS.gemini].filter(Boolean) as string[]),
+  ]
+}
+
+// gemini-2.5-pro cannot disable "thinking" (thinkingBudget:0 is rejected) and its
+// thinking consumes the output-token budget — so for pro we allow a bounded
+// thinking budget and widen maxOutputTokens to avoid truncation. flash/flash-lite
+// keep thinkingBudget:0 (fastest, no truncation).
+function geminiGenConfig(model: string, maxTokens: number, json: boolean): Record<string, unknown> {
+  const isPro = /pro/i.test(model)
+  return {
+    ...(json ? { responseMimeType: 'application/json' } : {}),
+    maxOutputTokens: isPro ? Math.max(maxTokens, 4096) : maxTokens,
+    thinkingConfig: { thinkingBudget: isPro ? 1024 : 0 },
+  }
 }
 
 const geminiLastModel: { main?: string; fast?: string } = {}
@@ -153,10 +173,8 @@ const geminiProvider: AiProvider = {
         const model = client.getGenerativeModel({
           model: m,
           ...(req.system ? { systemInstruction: req.system } : {}),
-          // thinkingBudget:0 disables Gemini 2.5 "thinking" so it doesn't consume the
-          // output-token budget (otherwise answers truncate mid-sentence). Cast: this
-          // SDK version's GenerationConfig type doesn't include thinkingConfig yet.
-          generationConfig: { responseMimeType: 'application/json', maxOutputTokens: req.maxTokens ?? 2048, thinkingConfig: { thinkingBudget: 0 } } as any,
+          // Cast: this SDK version's GenerationConfig type doesn't include thinkingConfig.
+          generationConfig: geminiGenConfig(m, req.maxTokens ?? 2048, true) as any,
         })
         const resp = await model.generateContent(prompt)
         geminiLastModel[which] = m
@@ -180,8 +198,8 @@ const geminiProvider: AiProvider = {
         const model = client.getGenerativeModel({
           model: m,
           ...(req.system ? { systemInstruction: req.system } : {}),
-          // thinkingBudget:0 — see note above; keeps Gemini 2.5 from truncating output.
-          generationConfig: { maxOutputTokens: req.maxTokens ?? 1024, thinkingConfig: { thinkingBudget: 0 } } as any,
+          // Cast: see note in generateStructured.
+          generationConfig: geminiGenConfig(m, req.maxTokens ?? 1024, false) as any,
         })
         const resp = await model.generateContent(req.prompt)
         geminiLastModel[which] = m
