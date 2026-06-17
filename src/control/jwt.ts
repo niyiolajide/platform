@@ -39,14 +39,6 @@ function b64urlJson(s: string): Record<string, unknown> | null {
   }
 }
 
-/** Verify an HS256 signature against the shared secret. */
-function verifyHs256(signingInput: string, sig: Buffer): boolean {
-  const secret = keys.sharedJwtSecret()
-  if (!secret) return false
-  const expected = crypto.createHmac('sha256', secret).update(signingInput).digest()
-  return expected.length === sig.length && crypto.timingSafeEqual(expected, sig)
-}
-
 /**
  * Verify an RS256 signature against the published hub public key(s). When a `kid`
  * is present only the matching key is tried; otherwise every published key is tried
@@ -85,15 +77,10 @@ export function verifyHubToken(token: string | undefined | null): HubJwtPayload 
   const signingInput = `${headerB64}.${payloadB64}`
   const sig = b64urlDecode(sigB64)
 
-  let signatureOk = false
-  if (header.alg === 'RS256') {
-    signatureOk = verifyRs256(signingInput, sig, header.kid as string | undefined)
-  } else if (header.alg === 'HS256') {
-    signatureOk = verifyHs256(signingInput, sig)
-  } else {
-    return null
-  }
-  if (!signatureOk) return null
+  // RS256-only (Stage 4): HS256 is retired — the hub is the sole minter via its
+  // private key; apps verify with the published public key(s) and cannot forge.
+  if (header.alg !== 'RS256') return null
+  if (!verifyRs256(signingInput, sig, header.kid as string | undefined)) return null
 
   const payload = b64urlJson(payloadB64) as HubJwtPayload | null
   if (!payload || payload.iss !== 'hub') return null

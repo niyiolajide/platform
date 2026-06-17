@@ -18,14 +18,6 @@ function b64urlJson(s) {
         return null;
     }
 }
-/** Verify an HS256 signature against the shared secret. */
-function verifyHs256(signingInput, sig) {
-    const secret = config_1.keys.sharedJwtSecret();
-    if (!secret)
-        return false;
-    const expected = crypto_1.default.createHmac('sha256', secret).update(signingInput).digest();
-    return expected.length === sig.length && crypto_1.default.timingSafeEqual(expected, sig);
-}
 /**
  * Verify an RS256 signature against the published hub public key(s). When a `kid`
  * is present only the matching key is tried; otherwise every published key is tried
@@ -66,17 +58,11 @@ function verifyHubToken(token) {
         return null;
     const signingInput = `${headerB64}.${payloadB64}`;
     const sig = b64urlDecode(sigB64);
-    let signatureOk = false;
-    if (header.alg === 'RS256') {
-        signatureOk = verifyRs256(signingInput, sig, header.kid);
-    }
-    else if (header.alg === 'HS256') {
-        signatureOk = verifyHs256(signingInput, sig);
-    }
-    else {
+    // RS256-only (Stage 4): HS256 is retired — the hub is the sole minter via its
+    // private key; apps verify with the published public key(s) and cannot forge.
+    if (header.alg !== 'RS256')
         return null;
-    }
-    if (!signatureOk)
+    if (!verifyRs256(signingInput, sig, header.kid))
         return null;
     const payload = b64urlJson(payloadB64);
     if (!payload || payload.iss !== 'hub')

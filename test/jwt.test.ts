@@ -58,26 +58,28 @@ afterEach(() => {
 describe('verifyHubToken', () => {
   const base = { userId: 'u1', email: 'a@b.com', iss: 'hub', exp: Math.floor(Date.now() / 1000) + 3600 }
 
-  it('accepts a valid hub token', () => {
-    const t = mintHubToken({ ...base, jti: 'j1' })
+  it('accepts a valid RS256 hub token', () => {
+    const t = mintRs256({ ...base, jti: 'j1' }, { kid: KID })
     expect(verifyHubToken(t)?.userId).toBe('u1')
   })
 
   it('rejects a wrong signature', () => {
-    const t = mintHubToken({ ...base }).slice(0, -2) + 'xx'
+    const t = mintRs256({ ...base }, { kid: KID }).slice(0, -2) + 'xx'
     expect(verifyHubToken(t)).toBeNull()
   })
 
   it('rejects a non-hub issuer', () => {
-    expect(verifyHubToken(mintHubToken({ ...base, iss: 'other' }))).toBeNull()
+    expect(verifyHubToken(mintRs256({ ...base, iss: 'other' }, { kid: KID }))).toBeNull()
   })
 
   it('rejects an expired token', () => {
-    expect(verifyHubToken(mintHubToken({ ...base, exp: Math.floor(Date.now() / 1000) - 5 }))).toBeNull()
+    expect(
+      verifyHubToken(mintRs256({ ...base, exp: Math.floor(Date.now() / 1000) - 5 }, { kid: KID }))
+    ).toBeNull()
   })
 
   it('rejects a revoked jti (offline revocation)', () => {
-    const t = mintHubToken({ ...base, jti: 'revoked-1' })
+    const t = mintRs256({ ...base, jti: 'revoked-1' }, { kid: KID })
     expect(verifyHubToken(t)?.userId).toBe('u1')
     revokeJti('revoked-1', base.exp)
     _clearCache()
@@ -124,8 +126,8 @@ describe('verifyHubToken', () => {
     expect(verifyHubToken(`${header}.${body}.`)).toBeNull()
   })
 
-  it('still accepts HS256 while RS256 keys are published (dual-accept)', () => {
-    const t = mintHubToken({ ...base, jti: 'hs-during-dual' })
-    expect(verifyHubToken(t)?.userId).toBe('u1')
+  it('REJECTS HS256 (retired in Stage 4 — RS256 only)', () => {
+    const t = mintHubToken({ ...base, jti: 'hs-retired' })
+    expect(verifyHubToken(t)).toBeNull()
   })
 })
