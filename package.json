@@ -1,0 +1,38 @@
+{
+  "name": "@niyi/platform",
+  "version": "0.1.0",
+  "description": "Shared control-plane library for the sibling apps: AI providers, notifications, and the control-bundle file-bus.",
+  "license": "UNLICENSED",
+  "repository": "github:niyiolajide/platform",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": { "types": "./dist/index.d.ts", "default": "./dist/index.js" },
+    "./ai": { "types": "./dist/ai/index.d.ts", "default": "./dist/ai/index.js" },
+    "./notify": { "types": "./dist/notify/index.d.ts", "default": "./dist/notify/index.js" },
+    "./control": { "types": "./dist/control/index.d.ts", "default": "./dist/control/index.js" }
+  },
+  "files": ["dist", "src"],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.build.json --noEmit",
+    "test": "vitest run",
+    "verify-dist": "npm run build && git diff --exit-code -- dist || (echo 'dist out of sync with source — run npm run build and commit' && exit 1)"
+  },
+  "dependencies": {
+    "zod": "^3.23.8"
+  },
+  "peerDependencies": {
+    "@anthropic-ai/sdk": ">=0.30.0",
+    "@google/generative-ai": ">=0.20.0"
+  },
+  "peerDependenciesMeta": {
+    "@google/generative-ai": { "optional": true }
+  },
+  "devDependencies": {
+    "@anthropic-ai/sdk": "^0.36.0",
+    "@google/generative-ai": "^0.21.0",
+    "typescript": "^5.6.0",
+    "vitest": "^2.1.0"
+  }
+}

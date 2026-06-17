@@ -1,0 +1,28 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: npm install
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Unit tests
+        run: npm test
+      - name: dist matches source (prebuilt artifact not stale)
+        run: |
+          npm run build
+          if ! git diff --quiet -- dist; then
+            echo "::error::dist/ is out of sync with src/. Run 'npm run build' and commit dist."
+            git --no-pager diff --stat -- dist
+            exit 1
+          fi

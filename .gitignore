@@ -1,0 +1,6 @@
+node_modules/
+*.log
+.DS_Store
+coverage/
+# NOTE: dist/ is intentionally committed — consumers install via git+SHA and use
+# the prebuilt output (no compile-on-install). Do NOT ignore dist.
