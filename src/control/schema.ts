@@ -49,3 +49,20 @@ export const REVOCATIONS_SCHEMA = z.object({
   revoked: z.array(z.object({ jti: z.string(), exp: z.number().int() })).default([]),
 })
 export type Revocations = z.infer<typeof REVOCATIONS_SCHEMA>
+
+// App registry — drives the cross-app AppSwitcher in every app's shell. `url` is
+// browser-facing (what the user navigates to), so it's editable here (not hardcoded
+// to localhost). `icon` is a lucide icon name.
+export const APP_INFO_SCHEMA = z.object({
+  key: z.string(),
+  name: z.string(),
+  url: z.string(),
+  icon: z.string().optional(),
+})
+export type AppInfo = z.infer<typeof APP_INFO_SCHEMA>
+
+export const APPS_SCHEMA = z.object({
+  schemaVersion: z.number().int().default(1),
+  apps: z.array(APP_INFO_SCHEMA).default([]),
+})
+export type AppsRegistry = z.infer<typeof APPS_SCHEMA>

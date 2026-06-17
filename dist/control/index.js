@@ -14,11 +14,12 @@ var __exportStar = (this && this.__exportStar) || function(m, exports) {
     for (var p in m) if (p !== "default" && !Object.prototype.hasOwnProperty.call(exports, p)) __createBinding(exports, m, p);
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.verifyHubToken = exports._clearCache = exports.revokeJti = exports.publishRevocations = exports.publishNotifySettings = exports.publishAiSettings = exports.isRevoked = exports.readRevocations = exports.readNotifySettings = exports.aiConfigSource = exports.readAiSettings = void 0;
+exports.verifyHubToken = exports._clearCache = exports.revokeJti = exports.publishRevocations = exports.publishNotifySettings = exports.publishAiSettings = exports.isRevoked = exports.readRevocations = exports.readNotifySettings = exports.readApps = exports.aiConfigSource = exports.readAiSettings = void 0;
 __exportStar(require("./schema"), exports);
 var store_1 = require("./store");
 Object.defineProperty(exports, "readAiSettings", { enumerable: true, get: function () { return store_1.readAiSettings; } });
 Object.defineProperty(exports, "aiConfigSource", { enumerable: true, get: function () { return store_1.aiConfigSource; } });
+Object.defineProperty(exports, "readApps", { enumerable: true, get: function () { return store_1.readApps; } });
 Object.defineProperty(exports, "readNotifySettings", { enumerable: true, get: function () { return store_1.readNotifySettings; } });
 Object.defineProperty(exports, "readRevocations", { enumerable: true, get: function () { return store_1.readRevocations; } });
 Object.defineProperty(exports, "isRevoked", { enumerable: true, get: function () { return store_1.isRevoked; } });

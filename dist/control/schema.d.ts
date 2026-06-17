@@ -105,3 +105,56 @@ export declare const REVOCATIONS_SCHEMA: z.ZodObject<{
     }[] | undefined;
 }>;
 export type Revocations = z.infer<typeof REVOCATIONS_SCHEMA>;
+export declare const APP_INFO_SCHEMA: z.ZodObject<{
+    key: z.ZodString;
+    name: z.ZodString;
+    url: z.ZodString;
+    icon: z.ZodOptional<z.ZodString>;
+}, "strip", z.ZodTypeAny, {
+    key: string;
+    name: string;
+    url: string;
+    icon?: string | undefined;
+}, {
+    key: string;
+    name: string;
+    url: string;
+    icon?: string | undefined;
+}>;
+export type AppInfo = z.infer<typeof APP_INFO_SCHEMA>;
+export declare const APPS_SCHEMA: z.ZodObject<{
+    schemaVersion: z.ZodDefault<z.ZodNumber>;
+    apps: z.ZodDefault<z.ZodArray<z.ZodObject<{
+        key: z.ZodString;
+        name: z.ZodString;
+        url: z.ZodString;
+        icon: z.ZodOptional<z.ZodString>;
+    }, "strip", z.ZodTypeAny, {
+        key: string;
+        name: string;
+        url: string;
+        icon?: string | undefined;
+    }, {
+        key: string;
+        name: string;
+        url: string;
+        icon?: string | undefined;
+    }>, "many">>;
+}, "strip", z.ZodTypeAny, {
+    schemaVersion: number;
+    apps: {
+        key: string;
+        name: string;
+        url: string;
+        icon?: string | undefined;
+    }[];
+}, {
+    schemaVersion?: number | undefined;
+    apps?: {
+        key: string;
+        name: string;
+        url: string;
+        icon?: string | undefined;
+    }[] | undefined;
+}>;
+export type AppsRegistry = z.infer<typeof APPS_SCHEMA>;

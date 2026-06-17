@@ -5,6 +5,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.readAiSettings = readAiSettings;
 exports.aiConfigSource = aiConfigSource;
+exports.readApps = readApps;
 exports.readNotifySettings = readNotifySettings;
 exports.readRevocations = readRevocations;
 exports.isRevoked = isRevoked;
@@ -77,6 +78,11 @@ function readAiSettings() {
 /** Did the AI settings come from the published file or env/defaults? (drift signal) */
 function aiConfigSource() {
     return readRaw('ai.json') ? 'file' : 'env-default';
+}
+/** The cross-app registry for the shell AppSwitcher (from control/apps.json). */
+function readApps() {
+    const file = readRaw('apps.json') ?? {};
+    return schema_1.APPS_SCHEMA.parse(file).apps;
 }
 function readNotifySettings() {
     const file = readRaw('notify.json') ?? {};

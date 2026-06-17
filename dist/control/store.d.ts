@@ -1,7 +1,9 @@
-import { type AiSettings, type NotifySettings, type Revocations } from './schema';
+import { type AiSettings, type NotifySettings, type Revocations, type AppInfo } from './schema';
 export declare function readAiSettings(): AiSettings;
 /** Did the AI settings come from the published file or env/defaults? (drift signal) */
 export declare function aiConfigSource(): 'file' | 'env-default';
+/** The cross-app registry for the shell AppSwitcher (from control/apps.json). */
+export declare function readApps(): AppInfo[];
 export declare function readNotifySettings(): NotifySettings;
 export declare function readRevocations(): Revocations;
 export declare function isRevoked(jti: string | undefined | null): boolean;

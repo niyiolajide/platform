@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.REVOCATIONS_SCHEMA = exports.NOTIFY_SETTINGS_SCHEMA = exports.NOTIFY_CHANNEL = exports.AI_SETTINGS_SCHEMA = void 0;
+exports.APPS_SCHEMA = exports.APP_INFO_SCHEMA = exports.REVOCATIONS_SCHEMA = exports.NOTIFY_SETTINGS_SCHEMA = exports.NOTIFY_CHANNEL = exports.AI_SETTINGS_SCHEMA = void 0;
 const zod_1 = require("zod");
 // ── Control-bundle contract ───────────────────────────────────────────────────
 // These zod schemas are the SINGLE source of truth for the files the hub publishes
@@ -40,4 +40,17 @@ exports.REVOCATIONS_SCHEMA = zod_1.z.object({
     // Revoked hub-token jti values, each with the token's exp (epoch seconds) so
     // the hub can prune entries once they can no longer be presented.
     revoked: zod_1.z.array(zod_1.z.object({ jti: zod_1.z.string(), exp: zod_1.z.number().int() })).default([]),
+});
+// App registry — drives the cross-app AppSwitcher in every app's shell. `url` is
+// browser-facing (what the user navigates to), so it's editable here (not hardcoded
+// to localhost). `icon` is a lucide icon name.
+exports.APP_INFO_SCHEMA = zod_1.z.object({
+    key: zod_1.z.string(),
+    name: zod_1.z.string(),
+    url: zod_1.z.string(),
+    icon: zod_1.z.string().optional(),
+});
+exports.APPS_SCHEMA = zod_1.z.object({
+    schemaVersion: zod_1.z.number().int().default(1),
+    apps: zod_1.z.array(exports.APP_INFO_SCHEMA).default([]),
 });

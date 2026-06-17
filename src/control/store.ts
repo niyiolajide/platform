@@ -5,9 +5,11 @@ import {
   AI_SETTINGS_SCHEMA,
   NOTIFY_SETTINGS_SCHEMA,
   REVOCATIONS_SCHEMA,
+  APPS_SCHEMA,
   type AiSettings,
   type NotifySettings,
   type Revocations,
+  type AppInfo,
 } from './schema'
 
 // ── Control-bundle file-bus ───────────────────────────────────────────────────
@@ -78,6 +80,12 @@ export function readAiSettings(): AiSettings {
 /** Did the AI settings come from the published file or env/defaults? (drift signal) */
 export function aiConfigSource(): 'file' | 'env-default' {
   return readRaw('ai.json') ? 'file' : 'env-default'
+}
+
+/** The cross-app registry for the shell AppSwitcher (from control/apps.json). */
+export function readApps(): AppInfo[] {
+  const file = (readRaw('apps.json') as Record<string, unknown> | null) ?? {}
+  return APPS_SCHEMA.parse(file).apps
 }
 
 export function readNotifySettings(): NotifySettings {

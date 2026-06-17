@@ -2,6 +2,7 @@ export * from './schema'
 export {
   readAiSettings,
   aiConfigSource,
+  readApps,
   readNotifySettings,
   readRevocations,
   isRevoked,
