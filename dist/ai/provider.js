@@ -7,7 +7,24 @@ exports.resolveAiProvider = resolveAiProvider;
 const config_1 = require("../config");
 const store_1 = require("../control/store");
 const anthropic_1 = require("./anthropic");
+const anonymize_1 = require("./anonymize");
 const models_1 = require("./models");
+// ── Request anonymization ─────────────────────────────────────────────────────
+// Gate on the hub-managed `anonymizeRequests` setting (default on). When enabled,
+// PII in the prompt+system is reversibly tokenized BEFORE the API call (using one
+// anonymizer instance so a value is consistent across both fields), and the
+// returned `Anonymizer` is used to restore originals in the model's response.
+function anonymizeReq(req) {
+    if (!(0, store_1.readAiSettings)().anonymizeRequests)
+        return { req, restore: null };
+    const anon = (0, anonymize_1.createAnonymizer)();
+    const masked = {
+        ...req,
+        prompt: anon.mask(req.prompt),
+        ...(req.system != null ? { system: anon.mask(req.system) } : {}),
+    };
+    return { req: masked, restore: anon };
+}
 // ── Anthropic (Claude) ────────────────────────────────────────────────────────
 const anthropicProvider = {
     kind: 'anthropic',
@@ -17,7 +34,8 @@ const anthropicProvider = {
         const s = (0, store_1.readAiSettings)();
         return w === 'fast' ? s.anthropicModelFast : s.anthropicModel;
     },
-    async generateStructured(req) {
+    async generateStructured(reqIn) {
+        const { req, restore } = anonymizeReq(reqIn);
         try {
             const resp = await (0, anthropic_1.getAnthropic)().messages.create({
                 model: this.modelName(req.model),
@@ -34,14 +52,18 @@ const anthropicProvider = {
                 messages: [{ role: 'user', content: req.prompt }],
             });
             const tu = resp.content.find((b) => b.type === 'tool_use');
-            return tu && tu.type === 'tool_use' ? tu.input : null;
+            if (!tu || tu.type !== 'tool_use')
+                return null;
+            const out = tu.input;
+            return restore ? restore.unmaskDeep(out) : out;
         }
         catch (err) {
             (0, config_1.getLogger)().warn({ err }, '[ai/anthropic] structured generation failed');
             return null;
         }
     },
-    async generateText(req) {
+    async generateText(reqIn) {
+        const { req, restore } = anonymizeReq(reqIn);
         try {
             const resp = await (0, anthropic_1.getAnthropic)().messages.create({
                 model: this.modelName(req.model),
@@ -54,7 +76,9 @@ const anthropicProvider = {
                 .map((b) => b.text)
                 .join('')
                 .trim();
-            return text || null;
+            if (!text)
+                return null;
+            return restore ? restore.unmask(text) : text;
         }
         catch (err) {
             (0, config_1.getLogger)().warn({ err }, '[ai/anthropic] text generation failed');
@@ -124,7 +148,8 @@ const geminiProvider = {
         const s = (0, store_1.readAiSettings)();
         return geminiLastModel[which] ?? (which === 'fast' ? s.geminiModelFast : s.geminiModel);
     },
-    async generateStructured(req) {
+    async generateStructured(reqIn) {
+        const { req, restore } = anonymizeReq(reqIn);
         const which = req.model === 'fast' ? 'fast' : 'main';
         const client = genai();
         if (!client)
@@ -142,7 +167,8 @@ const geminiProvider = {
                 });
                 const resp = await model.generateContent(prompt);
                 geminiLastModel[which] = m;
-                return parseJsonObject(resp.response.text());
+                const out = parseJsonObject(resp.response.text());
+                return out && restore ? restore.unmaskDeep(out) : out;
             }
             catch (err) {
                 const willFallback = i < models.length - 1;
@@ -153,7 +179,8 @@ const geminiProvider = {
         }
         return null;
     },
-    async generateText(req) {
+    async generateText(reqIn) {
+        const { req, restore } = anonymizeReq(reqIn);
         const which = req.model === 'fast' ? 'fast' : 'main';
         const client = genai();
         if (!client)
@@ -170,7 +197,8 @@ const geminiProvider = {
                 });
                 const resp = await model.generateContent(req.prompt);
                 geminiLastModel[which] = m;
-                return resp.response.text().trim() || null;
+                const text = resp.response.text().trim() || null;
+                return text && restore ? restore.unmask(text) : text;
             }
             catch (err) {
                 const willFallback = i < models.length - 1;

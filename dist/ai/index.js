@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.AI_MODELS = exports.aiConfigSource = exports.readAiSettings = exports.AI_SETTINGS_SCHEMA = exports.resolveAiProvider = exports.anyAiConfigured = exports.getProvider = exports.AI_PROVIDERS = exports._resetAnthropic = exports.isAnthropicConfigured = exports.getAnthropic = void 0;
+exports.createAnonymizer = exports.AI_MODELS = exports.aiConfigSource = exports.readAiSettings = exports.AI_SETTINGS_SCHEMA = exports.resolveAiProvider = exports.anyAiConfigured = exports.getProvider = exports.AI_PROVIDERS = exports._resetAnthropic = exports.isAnthropicConfigured = exports.getAnthropic = void 0;
 var anthropic_1 = require("./anthropic");
 Object.defineProperty(exports, "getAnthropic", { enumerable: true, get: function () { return anthropic_1.getAnthropic; } });
 Object.defineProperty(exports, "isAnthropicConfigured", { enumerable: true, get: function () { return anthropic_1.isAnthropicConfigured; } });
@@ -18,3 +18,5 @@ Object.defineProperty(exports, "readAiSettings", { enumerable: true, get: functi
 Object.defineProperty(exports, "aiConfigSource", { enumerable: true, get: function () { return store_1.aiConfigSource; } });
 var models_1 = require("./models");
 Object.defineProperty(exports, "AI_MODELS", { enumerable: true, get: function () { return models_1.AI_MODELS; } });
+var anonymize_1 = require("./anonymize");
+Object.defineProperty(exports, "createAnonymizer", { enumerable: true, get: function () { return anonymize_1.createAnonymizer; } });

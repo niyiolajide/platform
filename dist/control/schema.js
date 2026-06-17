@@ -12,6 +12,10 @@ exports.AI_SETTINGS_SCHEMA = zod_1.z.object({
     schemaVersion: zod_1.z.number().int().default(1),
     provider: zod_1.z.enum(['anthropic', 'gemini']).default('anthropic'),
     fallbackEnabled: zod_1.z.boolean().default(true),
+    // Reversibly tokenize PII (emails/phones/SSNs/cards/IBANs/IPs/addresses/names)
+    // out of every prompt+system before it leaves the host for a model API, then
+    // restore it in the response. On by default. Monetary amounts are never masked.
+    anonymizeRequests: zod_1.z.boolean().default(true),
     anthropicModel: zod_1.z.string().default('claude-sonnet-4-6'),
     anthropicModelFast: zod_1.z.string().default('claude-haiku-4-5-20251001'),
     geminiModel: zod_1.z.string().default('gemini-2.5-flash'),

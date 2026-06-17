@@ -3,6 +3,7 @@ export declare const AI_SETTINGS_SCHEMA: z.ZodObject<{
     schemaVersion: z.ZodDefault<z.ZodNumber>;
     provider: z.ZodDefault<z.ZodEnum<["anthropic", "gemini"]>>;
     fallbackEnabled: z.ZodDefault<z.ZodBoolean>;
+    anonymizeRequests: z.ZodDefault<z.ZodBoolean>;
     anthropicModel: z.ZodDefault<z.ZodString>;
     anthropicModelFast: z.ZodDefault<z.ZodString>;
     geminiModel: z.ZodDefault<z.ZodString>;
@@ -12,6 +13,7 @@ export declare const AI_SETTINGS_SCHEMA: z.ZodObject<{
     schemaVersion: number;
     provider: "anthropic" | "gemini";
     fallbackEnabled: boolean;
+    anonymizeRequests: boolean;
     anthropicModel: string;
     anthropicModelFast: string;
     geminiModel: string;
@@ -21,6 +23,7 @@ export declare const AI_SETTINGS_SCHEMA: z.ZodObject<{
     schemaVersion?: number | undefined;
     provider?: "anthropic" | "gemini" | undefined;
     fallbackEnabled?: boolean | undefined;
+    anonymizeRequests?: boolean | undefined;
     anthropicModel?: string | undefined;
     anthropicModelFast?: string | undefined;
     geminiModel?: string | undefined;

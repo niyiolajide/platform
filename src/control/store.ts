@@ -61,6 +61,10 @@ function writeRaw(file: string, value: unknown): void {
 // AI settings: file overrides env defaults; schema applies hard defaults. Tolerant.
 function aiEnvDefaults(): Partial<AiSettings> {
   return {
+    anonymizeRequests:
+      process.env.AI_ANONYMIZE_REQUESTS != null
+        ? process.env.AI_ANONYMIZE_REQUESTS !== 'false'
+        : undefined,
     anthropicModel: process.env.ANTHROPIC_MODEL || undefined,
     anthropicModelFast: process.env.ANTHROPIC_MODEL_FAST || undefined,
     geminiModel: process.env.GEMINI_MODEL || undefined,

@@ -3,3 +3,4 @@ export { type AiProviderKind, type AiProvider, type StructuredRequest, type Text
 export { AI_SETTINGS_SCHEMA, type AiSettings } from '../control/schema';
 export { readAiSettings, aiConfigSource } from '../control/store';
 export { AI_MODELS, type AnthropicModel, type GeminiModel } from './models';
+export { createAnonymizer, type Anonymizer, type PiiCategory } from './anonymize';

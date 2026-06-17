@@ -1,0 +1,195 @@
+// ── Reversible request anonymization ──────────────────────────────────────────
+// Before any prompt/system text leaves the host for an external model API
+// (Anthropic or Gemini), direct identifiers + person names are replaced with
+// stable placeholder tokens (e.g. [EMAIL_1], [PERSON_2]). The mapping is held in
+// memory for the lifetime of a single request, so the model's response can be
+// de-tokenized back to the real values — keeping PII off the wire while preserving
+// output quality (digests/insights still name the real people/places).
+//
+// Monetary amounts are deliberately NOT tokenized: the model needs them to reason
+// (compare, total, trend) for finance/health insights to be useful.
+//
+// Detection is regex-based and best-effort. Direct identifiers (email, phone, SSN,
+// card, IBAN, IP, street address) are high-confidence. Person-name detection is
+// heuristic (titlecase runs + title prefixes) and inherently imperfect — false
+// positives are masked-then-restored verbatim, so they never corrupt output; their
+// only cost is the model seeing a token in place of a benign capitalized phrase.
+
+export type PiiCategory =
+  | 'EMAIL'
+  | 'PHONE'
+  | 'SSN'
+  | 'CARD'
+  | 'IBAN'
+  | 'IP'
+  | 'ADDRESS'
+  | 'PERSON'
+
+interface Detector {
+  category: PiiCategory
+  re: RegExp
+  // Optional validator: return true to mask the match, false to leave it as-is.
+  accept?: (match: string) => boolean
+}
+
+// Capitalized words that commonly appear in titlecase runs but are NOT person
+// names — masking them would needlessly strip useful context from the prompt.
+const NAME_STOPWORDS = new Set(
+  [
+    // months / days
+    'January', 'February', 'March', 'April', 'May', 'June', 'July', 'August',
+    'September', 'October', 'November', 'December', 'Monday', 'Tuesday',
+    'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday',
+    // geography / orgs that matter to finance/RE reasoning
+    'United', 'States', 'America', 'Bank', 'Chase', 'Wells', 'Fargo', 'Capital',
+    'One', 'Express', 'New', 'York', 'San', 'Los', 'Las', 'North', 'South',
+    'East', 'West', 'County', 'City', 'Street', 'Avenue', 'Road', 'Drive',
+    // common sentence-leading / filler words
+    'The', 'This', 'That', 'These', 'Those', 'Your', 'You', 'Please', 'Dear',
+    'Hello', 'Note', 'Total', 'Account', 'Summary', 'Report', 'Net', 'Worth',
+  ].map((w) => w),
+)
+
+function luhnValid(digits: string): boolean {
+  let sum = 0
+  let alt = false
+  for (let i = digits.length - 1; i >= 0; i--) {
+    let d = digits.charCodeAt(i) - 48
+    if (alt) {
+      d *= 2
+      if (d > 9) d -= 9
+    }
+    sum += d
+    alt = !alt
+  }
+  return sum % 10 === 0
+}
+
+// Order matters: greedier / higher-confidence detectors run first so their text is
+// already tokenized before later detectors (which never re-match a placeholder).
+const DETECTORS: Detector[] = [
+  {
+    category: 'EMAIL',
+    re: /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b/g,
+  },
+  {
+    category: 'IP',
+    // IPv4
+    re: /\b(?:(?:25[0-5]|2[0-4]\d|1?\d?\d)\.){3}(?:25[0-5]|2[0-4]\d|1?\d?\d)\b/g,
+  },
+  {
+    category: 'IP',
+    // IPv6 (compressed forms not exhaustively covered; at least 3 hextet groups)
+    re: /\b(?:[A-Fa-f0-9]{1,4}:){2,7}[A-Fa-f0-9]{1,4}\b/g,
+  },
+  {
+    category: 'SSN',
+    re: /\b\d{3}-\d{2}-\d{4}\b/g,
+  },
+  {
+    category: 'CARD',
+    re: /\b(?:\d[ -]?){13,19}\b/g,
+    accept: (m) => {
+      const digits = m.replace(/\D/g, '')
+      return digits.length >= 13 && digits.length <= 19 && luhnValid(digits)
+    },
+  },
+  {
+    category: 'IBAN',
+    re: /\b[A-Z]{2}\d{2}[A-Z0-9]{11,30}\b/g,
+  },
+  {
+    category: 'PHONE',
+    // Conservative US/intl: optional country code, optional area-code parens.
+    // Bounded by non-digit/non-`$` on both sides so it can't match inside a longer
+    // digit run (account/ref numbers) or swallow a bare numeric amount.
+    re: /(?<![\d$])(?:\+?\d{1,3}[\s.-]?)?(?:\(\d{3}\)|\d{3})[\s.-]?\d{3}[\s.-]?\d{4}(?!\d)/g,
+  },
+  {
+    category: 'ADDRESS',
+    re: /\b\d{1,6}\s+(?:[A-Za-z0-9.'-]+\s){0,4}(?:Street|St|Avenue|Ave|Boulevard|Blvd|Road|Rd|Lane|Ln|Drive|Dr|Court|Ct|Way|Place|Pl|Terrace|Ter|Circle|Cir|Parkway|Pkwy|Highway|Hwy)\b\.?/gi,
+  },
+  {
+    category: 'PERSON',
+    // Title-prefixed names: Mr./Mrs./Ms./Mx./Dr./Prof. + one or more Titlecase words.
+    re: /\b(?:Mr|Mrs|Ms|Mx|Dr|Prof)\.?\s+[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*/g,
+  },
+  {
+    category: 'PERSON',
+    // Heuristic full name: 2–3 consecutive Titlecase words, skipped when every
+    // token is a known non-name (months, geography, orgs, filler).
+    re: /\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,2}\b/g,
+    accept: (m) => m.split(/\s+/).some((w) => !NAME_STOPWORDS.has(w)),
+  },
+]
+
+export interface Anonymizer {
+  /** Replace PII in `text` with stable placeholder tokens. */
+  mask(text: string): string
+  /** Restore original values into `text` (typically the model's response). */
+  unmask(text: string): string
+  /** Recursively restore originals in every string value of a JSON-ish object. */
+  unmaskDeep<T>(value: T): T
+  /** Whether any PII was detected/replaced so far (useful for logging). */
+  hasMappings(): boolean
+}
+
+/**
+ * Create a per-request anonymizer. Mask the prompt and system with the SAME
+ * instance so a value appearing in both maps to one consistent token, then unmask
+ * the response with that same instance.
+ */
+export function createAnonymizer(): Anonymizer {
+  const originalToToken = new Map<string, string>()
+  const tokenToOriginal = new Map<string, string>()
+  const counters: Record<string, number> = {}
+
+  function tokenFor(category: PiiCategory, original: string): string {
+    const existing = originalToToken.get(original)
+    if (existing) return existing
+    counters[category] = (counters[category] ?? 0) + 1
+    const token = `[${category}_${counters[category]}]`
+    originalToToken.set(original, token)
+    tokenToOriginal.set(token, original)
+    return token
+  }
+
+  function mask(text: string): string {
+    if (!text) return text
+    let out = text
+    for (const det of DETECTORS) {
+      out = out.replace(det.re, (m) => {
+        if (det.accept && !det.accept(m)) return m
+        return tokenFor(det.category, m)
+      })
+    }
+    return out
+  }
+
+  function unmask(text: string): string {
+    if (!text || tokenToOriginal.size === 0) return text
+    return text.replace(/\[(?:EMAIL|PHONE|SSN|CARD|IBAN|IP|ADDRESS|PERSON)_\d+\]/g, (tok) =>
+      tokenToOriginal.has(tok) ? (tokenToOriginal.get(tok) as string) : tok,
+    )
+  }
+
+  function unmaskDeep<T>(value: T): T {
+    if (typeof value === 'string') return unmask(value) as unknown as T
+    if (Array.isArray(value)) return value.map((v) => unmaskDeep(v)) as unknown as T
+    if (value && typeof value === 'object') {
+      const out: Record<string, unknown> = {}
+      for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+        out[k] = unmaskDeep(v)
+      }
+      return out as T
+    }
+    return value
+  }
+
+  return {
+    mask,
+    unmask,
+    unmaskDeep,
+    hasMappings: () => tokenToOriginal.size > 0,
+  }
+}
