@@ -18,29 +18,65 @@ function b64urlJson(s) {
         return null;
     }
 }
+/** Verify an HS256 signature against the shared secret. */
+function verifyHs256(signingInput, sig) {
+    const secret = config_1.keys.sharedJwtSecret();
+    if (!secret)
+        return false;
+    const expected = crypto_1.default.createHmac('sha256', secret).update(signingInput).digest();
+    return expected.length === sig.length && crypto_1.default.timingSafeEqual(expected, sig);
+}
 /**
- * Verify a hub-token: HS256 signature against SHARED_JWT_SECRET, `iss==='hub'`,
- * not expired, and jti not revoked. Returns the payload or null.
+ * Verify an RS256 signature against the published hub public key(s). When a `kid`
+ * is present only the matching key is tried; otherwise every published key is tried
+ * (so rotation never locks anyone out). Returns true if any candidate verifies.
+ */
+function verifyRs256(signingInput, sig, kid) {
+    const all = config_1.keys.hubPublicKeys();
+    const candidates = kid ? all.filter((k) => k.kid === kid) : all;
+    // If a kid was supplied but doesn't match any known key, fall back to trying all
+    // (tolerates a token minted under a key not yet in this app's env).
+    const toTry = candidates.length > 0 ? candidates : all;
+    const data = Buffer.from(signingInput);
+    for (const k of toTry) {
+        try {
+            if (crypto_1.default.verify('RSA-SHA256', data, k.pem, sig))
+                return true;
+        }
+        catch {
+            // malformed key PEM — skip
+        }
+    }
+    return false;
+}
+/**
+ * Verify a hub-token: an RS256 (asymmetric) OR HS256 (legacy shared-secret)
+ * signature, plus `iss==='hub'`, not expired, and jti not revoked. Returns the
+ * payload or null.
  */
 function verifyHubToken(token) {
     if (!token)
-        return null;
-    const secret = config_1.keys.sharedJwtSecret();
-    if (!secret)
         return null;
     const parts = token.split('.');
     if (parts.length !== 3)
         return null;
     const [headerB64, payloadB64, sigB64] = parts;
     const header = b64urlJson(headerB64);
-    if (!header || header.alg !== 'HS256')
+    if (!header)
         return null;
-    const expected = crypto_1.default
-        .createHmac('sha256', secret)
-        .update(`${headerB64}.${payloadB64}`)
-        .digest();
-    const given = b64urlDecode(sigB64);
-    if (expected.length !== given.length || !crypto_1.default.timingSafeEqual(expected, given))
+    const signingInput = `${headerB64}.${payloadB64}`;
+    const sig = b64urlDecode(sigB64);
+    let signatureOk = false;
+    if (header.alg === 'RS256') {
+        signatureOk = verifyRs256(signingInput, sig, header.kid);
+    }
+    else if (header.alg === 'HS256') {
+        signatureOk = verifyHs256(signingInput, sig);
+    }
+    else {
+        return null;
+    }
+    if (!signatureOk)
         return null;
     const payload = b64urlJson(payloadB64);
     if (!payload || payload.iss !== 'hub')

@@ -8,7 +8,8 @@ export interface HubJwtPayload {
     exp?: number;
 }
 /**
- * Verify a hub-token: HS256 signature against SHARED_JWT_SECRET, `iss==='hub'`,
- * not expired, and jti not revoked. Returns the payload or null.
+ * Verify a hub-token: an RS256 (asymmetric) OR HS256 (legacy shared-secret)
+ * signature, plus `iss==='hub'`, not expired, and jti not revoked. Returns the
+ * payload or null.
  */
 export declare function verifyHubToken(token: string | undefined | null): HubJwtPayload | null;
