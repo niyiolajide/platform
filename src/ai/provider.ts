@@ -153,7 +153,10 @@ const geminiProvider: AiProvider = {
         const model = client.getGenerativeModel({
           model: m,
           ...(req.system ? { systemInstruction: req.system } : {}),
-          generationConfig: { responseMimeType: 'application/json', maxOutputTokens: req.maxTokens ?? 2048 },
+          // thinkingBudget:0 disables Gemini 2.5 "thinking" so it doesn't consume the
+          // output-token budget (otherwise answers truncate mid-sentence). Cast: this
+          // SDK version's GenerationConfig type doesn't include thinkingConfig yet.
+          generationConfig: { responseMimeType: 'application/json', maxOutputTokens: req.maxTokens ?? 2048, thinkingConfig: { thinkingBudget: 0 } } as any,
         })
         const resp = await model.generateContent(prompt)
         geminiLastModel[which] = m
@@ -177,7 +180,8 @@ const geminiProvider: AiProvider = {
         const model = client.getGenerativeModel({
           model: m,
           ...(req.system ? { systemInstruction: req.system } : {}),
-          generationConfig: { maxOutputTokens: req.maxTokens ?? 1024 },
+          // thinkingBudget:0 — see note above; keeps Gemini 2.5 from truncating output.
+          generationConfig: { maxOutputTokens: req.maxTokens ?? 1024, thinkingConfig: { thinkingBudget: 0 } } as any,
         })
         const resp = await model.generateContent(req.prompt)
         geminiLastModel[which] = m
