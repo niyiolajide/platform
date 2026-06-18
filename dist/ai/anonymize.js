@@ -1,37 +1,44 @@
 "use strict";
 // ── Reversible request anonymization ──────────────────────────────────────────
 // Before any prompt/system text leaves the host for an external model API
-// (Anthropic or Gemini), direct identifiers + person names are replaced with
-// stable placeholder tokens (e.g. [EMAIL_1], [PERSON_2]). The mapping is held in
-// memory for the lifetime of a single request, so the model's response can be
-// de-tokenized back to the real values — keeping PII off the wire while preserving
-// output quality (digests/insights still name the real people/places).
+// (Anthropic or Gemini), PII is replaced with stable placeholder tokens (e.g.
+// [EMAIL_1], [PERSON_2]). The mapping is held in memory for the lifetime of a
+// single request, so the model's response can be de-tokenized back to the real
+// values — keeping PII off the wire while preserving output quality (digests /
+// insights still name the real people/places).
 //
 // Monetary amounts are deliberately NOT tokenized: the model needs them to reason
 // (compare, total, trend) for finance/health insights to be useful.
 //
-// Detection is regex-based and best-effort. Direct identifiers (email, phone, SSN,
-// card, IBAN, IP, street address) are high-confidence. Person-name detection is
-// heuristic (titlecase runs + title prefixes) and inherently imperfect — false
-// positives are masked-then-restored verbatim, so they never corrupt output; their
-// only cost is the model seeing a token in place of a benign capitalized phrase.
+// Direct identifiers (email, phone, SSN, card, IBAN, IP, street address) are
+// matched with deterministic, high-confidence patterns. Person names are matched
+// against a curated allow-list of known people (KNOWN_NAMES) rather than guessed:
+// for a single-user system an explicit list is far more accurate than heuristic
+// NER — it catches lone first names (which models miss) and never mis-flags
+// brands/orgs (e.g. "Capital One", "GEICO") as people. Maintenance = add a person
+// to KNOWN_NAMES when a new contact starts showing up in the data.
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.createAnonymizer = createAnonymizer;
-// Capitalized words that commonly appear in titlecase runs but are NOT person
-// names — masking them would needlessly strip useful context from the prompt.
-const NAME_STOPWORDS = new Set([
-    // months / days
-    'January', 'February', 'March', 'April', 'May', 'June', 'July', 'August',
-    'September', 'October', 'November', 'December', 'Monday', 'Tuesday',
-    'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday',
-    // geography / orgs that matter to finance/RE reasoning
-    'United', 'States', 'America', 'Bank', 'Chase', 'Wells', 'Fargo', 'Capital',
-    'One', 'Express', 'New', 'York', 'San', 'Los', 'Las', 'North', 'South',
-    'East', 'West', 'County', 'City', 'Street', 'Avenue', 'Road', 'Drive',
-    // common sentence-leading / filler words
-    'The', 'This', 'That', 'These', 'Those', 'Your', 'You', 'Please', 'Dear',
-    'Hello', 'Note', 'Total', 'Account', 'Summary', 'Report', 'Net', 'Worth',
-].map((w) => w));
+// ── Known people (the ONLY names that get masked) ─────────────────────────────
+// Seeded from names appearing in the user's connector data. Add household
+// members / frequent contacts here; full names and lone first names both work.
+const KNOWN_NAMES = [
+    'Niyi Olajide',
+    'Wasiu Olajide',
+    'Nina Wang',
+    'Zahrah',
+];
+function escapeRe(s) {
+    return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+// One alternation over all known names, longest-first so "Niyi Olajide" wins over
+// a bare "Niyi". Case-insensitive + word-bounded. Null when the list is empty.
+const KNOWN_NAMES_RE = KNOWN_NAMES.length
+    ? new RegExp(`\\b(?:${[...KNOWN_NAMES]
+        .sort((a, b) => b.length - a.length)
+        .map(escapeRe)
+        .join('|')})\\b`, 'gi')
+    : null;
 function luhnValid(digits) {
     let sum = 0;
     let alt = false;
@@ -91,18 +98,8 @@ const DETECTORS = [
         category: 'ADDRESS',
         re: /\b\d{1,6}\s+(?:[A-Za-z0-9.'-]+\s){0,4}(?:Street|St|Avenue|Ave|Boulevard|Blvd|Road|Rd|Lane|Ln|Drive|Dr|Court|Ct|Way|Place|Pl|Terrace|Ter|Circle|Cir|Parkway|Pkwy|Highway|Hwy)\b\.?/gi,
     },
-    {
-        category: 'PERSON',
-        // Title-prefixed names: Mr./Mrs./Ms./Mx./Dr./Prof. + one or more Titlecase words.
-        re: /\b(?:Mr|Mrs|Ms|Mx|Dr|Prof)\.?\s+[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*/g,
-    },
-    {
-        category: 'PERSON',
-        // Heuristic full name: 2–3 consecutive Titlecase words, skipped when every
-        // token is a known non-name (months, geography, orgs, filler).
-        re: /\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,2}\b/g,
-        accept: (m) => m.split(/\s+/).some((w) => !NAME_STOPWORDS.has(w)),
-    },
+    // Person names: ONLY those on the KNOWN_NAMES allow-list (no heuristic guessing).
+    ...(KNOWN_NAMES_RE ? [{ category: 'PERSON', re: KNOWN_NAMES_RE }] : []),
 ];
 /**
  * Create a per-request anonymizer. Mask the prompt and system with the SAME

@@ -42,12 +42,19 @@ describe('createAnonymizer', () => {
     expect(tok1).toBe(tok2)
   })
 
-  it('detects heuristic person names but skips known non-name titlecase runs', () => {
+  it('masks only names on the KNOWN_NAMES allow-list, not arbitrary titlecase or brands', () => {
     const a = createAnonymizer()
-    const masked = a.mask('Sarah Connor moved to New York in March.')
-    expect(masked).toContain('[PERSON_1]')
-    expect(masked).toContain('New York') // stopword guard keeps geography
-    expect(masked).toContain('March')
+    const masked = a.mask('Zahrah paid Capital One; Sarah Connor was not flagged.')
+    expect(masked).toContain('[PERSON_1]') // Zahrah is on the allow-list
+    expect(masked).not.toContain('Zahrah')
+    expect(masked).toContain('Capital One') // brand/org kept (no heuristic over-masking)
+    expect(masked).toContain('Sarah Connor') // unknown name kept (no guessing)
+  })
+
+  it('matches a full known name in preference to its first name alone', () => {
+    const a = createAnonymizer()
+    const masked = a.mask('From Wasiu Olajide')
+    expect(masked).toBe('From [PERSON_1]') // whole "Wasiu Olajide", not "Wasiu" + " Olajide"
   })
 
   it('only Luhn-valid card-length digit runs are masked', () => {
