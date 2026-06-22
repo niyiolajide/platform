@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.APPS_SCHEMA = exports.APP_INFO_SCHEMA = exports.REVOCATIONS_SCHEMA = exports.NOTIFY_SETTINGS_SCHEMA = exports.NOTIFY_CHANNEL = exports.AI_SETTINGS_SCHEMA = exports.OLLAMA_SCHEMA = exports.CASCADES_SCHEMA = exports.DEFAULT_CASCADES = exports.CASCADE_STEP_SCHEMA = exports.PROVIDER_KIND = void 0;
+exports.APPS_SCHEMA = exports.APP_INFO_SCHEMA = exports.NAV_ITEM_SCHEMA = exports.REVOCATIONS_SCHEMA = exports.NOTIFY_SETTINGS_SCHEMA = exports.NOTIFY_CHANNEL = exports.AI_SETTINGS_SCHEMA = exports.OLLAMA_SCHEMA = exports.CASCADES_SCHEMA = exports.DEFAULT_CASCADES = exports.CASCADE_STEP_SCHEMA = exports.PROVIDER_KIND = void 0;
 const zod_1 = require("zod");
 // ── Control-bundle contract ───────────────────────────────────────────────────
 // These zod schemas are the SINGLE source of truth for the files the hub publishes
@@ -107,14 +107,35 @@ exports.REVOCATIONS_SCHEMA = zod_1.z.object({
     // the hub can prune entries once they can no longer be presented.
     revoked: zod_1.z.array(zod_1.z.object({ jti: zod_1.z.string(), exp: zod_1.z.number().int() })).default([]),
 });
+// A single in-app navigation destination. ONE source-of-truth for an app's nav,
+// consumed by every surface (the app's own web sidebar + ⌘K, the unified mobile
+// shell's per-app tabs, the iPad sidebar) so they can't drift. `group` buckets the
+// item in grouped surfaces (free-form per app, e.g. 'money'|'wealth'|'insights' for
+// Vantage); null = ungrouped/chrome. `icon` = lucide name (web), `emoji` = glyph
+// (mobile). `frequencyRank` orders within a surface (lower = earlier). `surfaces`
+// limits where it appears; `tab` marks the (≤5) phone bottom tabs.
+exports.NAV_ITEM_SCHEMA = zod_1.z.object({
+    key: zod_1.z.string(),
+    label: zod_1.z.string(),
+    href: zod_1.z.string(),
+    icon: zod_1.z.string().optional(),
+    emoji: zod_1.z.string().optional(),
+    group: zod_1.z.string().nullable().optional(),
+    frequencyRank: zod_1.z.number().optional(),
+    surfaces: zod_1.z.array(zod_1.z.enum(['web', 'phone', 'ipad'])).optional(),
+    tab: zod_1.z.boolean().optional(),
+});
 // App registry — drives the cross-app AppSwitcher in every app's shell. `url` is
 // browser-facing (what the user navigates to), so it's editable here (not hardcoded
-// to localhost). `icon` is a lucide icon name.
+// to localhost). `icon` is a lucide icon name. `nav` (optional) is the app's own
+// in-app navigation, published here so the app's web shell + the mobile shell
+// consume ONE definition (anti-drift); absent = the app bundles its own.
 exports.APP_INFO_SCHEMA = zod_1.z.object({
     key: zod_1.z.string(),
     name: zod_1.z.string(),
     url: zod_1.z.string(),
     icon: zod_1.z.string().optional(),
+    nav: zod_1.z.array(exports.NAV_ITEM_SCHEMA).optional(),
 });
 exports.APPS_SCHEMA = zod_1.z.object({
     schemaVersion: zod_1.z.number().int().default(1),

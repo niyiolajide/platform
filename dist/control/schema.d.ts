@@ -265,21 +265,106 @@ export declare const REVOCATIONS_SCHEMA: z.ZodObject<{
     }[] | undefined;
 }>;
 export type Revocations = z.infer<typeof REVOCATIONS_SCHEMA>;
+export declare const NAV_ITEM_SCHEMA: z.ZodObject<{
+    key: z.ZodString;
+    label: z.ZodString;
+    href: z.ZodString;
+    icon: z.ZodOptional<z.ZodString>;
+    emoji: z.ZodOptional<z.ZodString>;
+    group: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+    frequencyRank: z.ZodOptional<z.ZodNumber>;
+    surfaces: z.ZodOptional<z.ZodArray<z.ZodEnum<["web", "phone", "ipad"]>, "many">>;
+    tab: z.ZodOptional<z.ZodBoolean>;
+}, "strip", z.ZodTypeAny, {
+    key: string;
+    label: string;
+    href: string;
+    icon?: string | undefined;
+    emoji?: string | undefined;
+    group?: string | null | undefined;
+    frequencyRank?: number | undefined;
+    surfaces?: ("web" | "phone" | "ipad")[] | undefined;
+    tab?: boolean | undefined;
+}, {
+    key: string;
+    label: string;
+    href: string;
+    icon?: string | undefined;
+    emoji?: string | undefined;
+    group?: string | null | undefined;
+    frequencyRank?: number | undefined;
+    surfaces?: ("web" | "phone" | "ipad")[] | undefined;
+    tab?: boolean | undefined;
+}>;
+export type NavItemInfo = z.infer<typeof NAV_ITEM_SCHEMA>;
 export declare const APP_INFO_SCHEMA: z.ZodObject<{
     key: z.ZodString;
     name: z.ZodString;
     url: z.ZodString;
     icon: z.ZodOptional<z.ZodString>;
+    nav: z.ZodOptional<z.ZodArray<z.ZodObject<{
+        key: z.ZodString;
+        label: z.ZodString;
+        href: z.ZodString;
+        icon: z.ZodOptional<z.ZodString>;
+        emoji: z.ZodOptional<z.ZodString>;
+        group: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+        frequencyRank: z.ZodOptional<z.ZodNumber>;
+        surfaces: z.ZodOptional<z.ZodArray<z.ZodEnum<["web", "phone", "ipad"]>, "many">>;
+        tab: z.ZodOptional<z.ZodBoolean>;
+    }, "strip", z.ZodTypeAny, {
+        key: string;
+        label: string;
+        href: string;
+        icon?: string | undefined;
+        emoji?: string | undefined;
+        group?: string | null | undefined;
+        frequencyRank?: number | undefined;
+        surfaces?: ("web" | "phone" | "ipad")[] | undefined;
+        tab?: boolean | undefined;
+    }, {
+        key: string;
+        label: string;
+        href: string;
+        icon?: string | undefined;
+        emoji?: string | undefined;
+        group?: string | null | undefined;
+        frequencyRank?: number | undefined;
+        surfaces?: ("web" | "phone" | "ipad")[] | undefined;
+        tab?: boolean | undefined;
+    }>, "many">>;
 }, "strip", z.ZodTypeAny, {
     key: string;
     name: string;
     url: string;
     icon?: string | undefined;
+    nav?: {
+        key: string;
+        label: string;
+        href: string;
+        icon?: string | undefined;
+        emoji?: string | undefined;
+        group?: string | null | undefined;
+        frequencyRank?: number | undefined;
+        surfaces?: ("web" | "phone" | "ipad")[] | undefined;
+        tab?: boolean | undefined;
+    }[] | undefined;
 }, {
     key: string;
     name: string;
     url: string;
     icon?: string | undefined;
+    nav?: {
+        key: string;
+        label: string;
+        href: string;
+        icon?: string | undefined;
+        emoji?: string | undefined;
+        group?: string | null | undefined;
+        frequencyRank?: number | undefined;
+        surfaces?: ("web" | "phone" | "ipad")[] | undefined;
+        tab?: boolean | undefined;
+    }[] | undefined;
 }>;
 export type AppInfo = z.infer<typeof APP_INFO_SCHEMA>;
 export declare const APPS_SCHEMA: z.ZodObject<{
@@ -289,16 +374,69 @@ export declare const APPS_SCHEMA: z.ZodObject<{
         name: z.ZodString;
         url: z.ZodString;
         icon: z.ZodOptional<z.ZodString>;
+        nav: z.ZodOptional<z.ZodArray<z.ZodObject<{
+            key: z.ZodString;
+            label: z.ZodString;
+            href: z.ZodString;
+            icon: z.ZodOptional<z.ZodString>;
+            emoji: z.ZodOptional<z.ZodString>;
+            group: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+            frequencyRank: z.ZodOptional<z.ZodNumber>;
+            surfaces: z.ZodOptional<z.ZodArray<z.ZodEnum<["web", "phone", "ipad"]>, "many">>;
+            tab: z.ZodOptional<z.ZodBoolean>;
+        }, "strip", z.ZodTypeAny, {
+            key: string;
+            label: string;
+            href: string;
+            icon?: string | undefined;
+            emoji?: string | undefined;
+            group?: string | null | undefined;
+            frequencyRank?: number | undefined;
+            surfaces?: ("web" | "phone" | "ipad")[] | undefined;
+            tab?: boolean | undefined;
+        }, {
+            key: string;
+            label: string;
+            href: string;
+            icon?: string | undefined;
+            emoji?: string | undefined;
+            group?: string | null | undefined;
+            frequencyRank?: number | undefined;
+            surfaces?: ("web" | "phone" | "ipad")[] | undefined;
+            tab?: boolean | undefined;
+        }>, "many">>;
     }, "strip", z.ZodTypeAny, {
         key: string;
         name: string;
         url: string;
         icon?: string | undefined;
+        nav?: {
+            key: string;
+            label: string;
+            href: string;
+            icon?: string | undefined;
+            emoji?: string | undefined;
+            group?: string | null | undefined;
+            frequencyRank?: number | undefined;
+            surfaces?: ("web" | "phone" | "ipad")[] | undefined;
+            tab?: boolean | undefined;
+        }[] | undefined;
     }, {
         key: string;
         name: string;
         url: string;
         icon?: string | undefined;
+        nav?: {
+            key: string;
+            label: string;
+            href: string;
+            icon?: string | undefined;
+            emoji?: string | undefined;
+            group?: string | null | undefined;
+            frequencyRank?: number | undefined;
+            surfaces?: ("web" | "phone" | "ipad")[] | undefined;
+            tab?: boolean | undefined;
+        }[] | undefined;
     }>, "many">>;
 }, "strip", z.ZodTypeAny, {
     schemaVersion: number;
@@ -307,6 +445,17 @@ export declare const APPS_SCHEMA: z.ZodObject<{
         name: string;
         url: string;
         icon?: string | undefined;
+        nav?: {
+            key: string;
+            label: string;
+            href: string;
+            icon?: string | undefined;
+            emoji?: string | undefined;
+            group?: string | null | undefined;
+            frequencyRank?: number | undefined;
+            surfaces?: ("web" | "phone" | "ipad")[] | undefined;
+            tab?: boolean | undefined;
+        }[] | undefined;
     }[];
 }, {
     schemaVersion?: number | undefined;
@@ -315,6 +464,17 @@ export declare const APPS_SCHEMA: z.ZodObject<{
         name: string;
         url: string;
         icon?: string | undefined;
+        nav?: {
+            key: string;
+            label: string;
+            href: string;
+            icon?: string | undefined;
+            emoji?: string | undefined;
+            group?: string | null | undefined;
+            frequencyRank?: number | undefined;
+            surfaces?: ("web" | "phone" | "ipad")[] | undefined;
+            tab?: boolean | undefined;
+        }[] | undefined;
     }[] | undefined;
 }>;
 export type AppsRegistry = z.infer<typeof APPS_SCHEMA>;

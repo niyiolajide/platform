@@ -124,14 +124,37 @@ export const REVOCATIONS_SCHEMA = z.object({
 })
 export type Revocations = z.infer<typeof REVOCATIONS_SCHEMA>
 
+// A single in-app navigation destination. ONE source-of-truth for an app's nav,
+// consumed by every surface (the app's own web sidebar + ⌘K, the unified mobile
+// shell's per-app tabs, the iPad sidebar) so they can't drift. `group` buckets the
+// item in grouped surfaces (free-form per app, e.g. 'money'|'wealth'|'insights' for
+// Vantage); null = ungrouped/chrome. `icon` = lucide name (web), `emoji` = glyph
+// (mobile). `frequencyRank` orders within a surface (lower = earlier). `surfaces`
+// limits where it appears; `tab` marks the (≤5) phone bottom tabs.
+export const NAV_ITEM_SCHEMA = z.object({
+  key: z.string(),
+  label: z.string(),
+  href: z.string(),
+  icon: z.string().optional(),
+  emoji: z.string().optional(),
+  group: z.string().nullable().optional(),
+  frequencyRank: z.number().optional(),
+  surfaces: z.array(z.enum(['web', 'phone', 'ipad'])).optional(),
+  tab: z.boolean().optional(),
+})
+export type NavItemInfo = z.infer<typeof NAV_ITEM_SCHEMA>
+
 // App registry — drives the cross-app AppSwitcher in every app's shell. `url` is
 // browser-facing (what the user navigates to), so it's editable here (not hardcoded
-// to localhost). `icon` is a lucide icon name.
+// to localhost). `icon` is a lucide icon name. `nav` (optional) is the app's own
+// in-app navigation, published here so the app's web shell + the mobile shell
+// consume ONE definition (anti-drift); absent = the app bundles its own.
 export const APP_INFO_SCHEMA = z.object({
   key: z.string(),
   name: z.string(),
   url: z.string(),
   icon: z.string().optional(),
+  nav: z.array(NAV_ITEM_SCHEMA).optional(),
 })
 export type AppInfo = z.infer<typeof APP_INFO_SCHEMA>
 
