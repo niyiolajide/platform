@@ -7,14 +7,74 @@ import { z } from 'zod'
 // carries a `schemaVersion`; readers are tolerant (defaults fill missing fields)
 // so an older reader survives a newer file and vice-versa.
 
+// ── AI provider cascade ───────────────────────────────────────────────────────
+// The model-selection priority is a single ordered list per tier. Each step names
+// a provider + a concrete model; the resolver walks the list top-to-bottom at call
+// time, falling to the next step on any failure (outage, quota, empty/refusal).
+// This replaces the old (provider + fallbackEnabled + per-provider model) scheme;
+// the legacy scalar fields below are retained, derived from the cascade, so older
+// consumers that read `anthropicModel` etc. keep working.
+
+export const PROVIDER_KIND = z.enum(['gemini', 'anthropic', 'ollama'])
+export type ProviderKind = z.infer<typeof PROVIDER_KIND>
+
+export const CASCADE_STEP_SCHEMA = z.object({
+  provider: PROVIDER_KIND,
+  model: z.string().min(1),
+})
+export type CascadeStep = z.infer<typeof CASCADE_STEP_SCHEMA>
+
+// Default priority: fast cloud → quality cloud → free local (survives a cloud
+// outage). Gemini leads; Claude is the cross-provider fallback; Ollama (on-LAN,
+// no key, no anonymization) is the last-resort tail.
+export const DEFAULT_CASCADES: { main: CascadeStep[]; fast: CascadeStep[] } = {
+  main: [
+    { provider: 'gemini', model: 'gemini-2.5-pro' },
+    { provider: 'gemini', model: 'gemini-2.5-flash' },
+    { provider: 'anthropic', model: 'claude-sonnet-4-6' },
+    { provider: 'ollama', model: 'qwen3:30b-a3b' },
+  ],
+  fast: [
+    { provider: 'gemini', model: 'gemini-2.5-flash' },
+    { provider: 'gemini', model: 'gemini-2.5-flash-lite' },
+    { provider: 'anthropic', model: 'claude-haiku-4-5' },
+    { provider: 'ollama', model: 'qwen3.5:9b' },
+  ],
+}
+
+export const CASCADES_SCHEMA = z
+  .object({
+    main: z.array(CASCADE_STEP_SCHEMA).min(1).default(DEFAULT_CASCADES.main),
+    fast: z.array(CASCADE_STEP_SCHEMA).min(1).default(DEFAULT_CASCADES.fast),
+  })
+  .default({ main: DEFAULT_CASCADES.main, fast: DEFAULT_CASCADES.fast })
+
+// Local Ollama connection (no API key). `keepAlive` is passed through to Ollama:
+// -1 pins the model in VRAM so the intermittent fallback stays warm (avoids the
+// multi-second cold-load); a string like "30m" or seconds as a number also work.
+export const OLLAMA_SCHEMA = z
+  .object({
+    baseUrl: z.string().default('http://media001:80'),
+    keepAlive: z.union([z.string(), z.number()]).default(-1),
+  })
+  .default({ baseUrl: 'http://media001:80', keepAlive: -1 })
+
 export const AI_SETTINGS_SCHEMA = z.object({
   schemaVersion: z.number().int().default(1),
-  provider: z.enum(['anthropic', 'gemini']).default('anthropic'),
-  fallbackEnabled: z.boolean().default(true),
+  // The ordered model-selection priority — the source of truth for the resolver.
+  cascades: CASCADES_SCHEMA,
+  ollama: OLLAMA_SCHEMA,
   // Reversibly tokenize PII (emails/phones/SSNs/cards/IBANs/IPs/addresses/names)
   // out of every prompt+system before it leaves the host for a model API, then
   // restore it in the response. On by default. Monetary amounts are never masked.
+  // (Local Ollama steps skip masking — data never leaves the LAN.)
   anonymizeRequests: z.boolean().default(true),
+  // ── Legacy fields (deprecated) ──────────────────────────────────────────────
+  // Retained for back-compat: the store derives a cascade from these when a file
+  // predates `cascades`, and backfills them from the active cascade so consumers
+  // still reading `anthropicModel` etc. keep working. Prefer `cascades`.
+  provider: z.enum(['anthropic', 'gemini']).default('anthropic'),
+  fallbackEnabled: z.boolean().default(true),
   anthropicModel: z.string().default('claude-sonnet-4-6'),
   anthropicModelFast: z.string().default('claude-haiku-4-5-20251001'),
   geminiModel: z.string().default('gemini-2.5-flash'),

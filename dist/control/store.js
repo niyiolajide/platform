@@ -71,12 +71,96 @@ function aiEnvDefaults() {
         geminiModelFallback: process.env.GEMINI_MODEL_FALLBACK || undefined,
     };
 }
+const LEGACY_MODEL_KEYS = [
+    'provider',
+    'fallbackEnabled',
+    'anthropicModel',
+    'anthropicModelFast',
+    'geminiModel',
+    'geminiModelFast',
+    'geminiModelFallback',
+];
+function hasLegacyModelOverride(raw) {
+    return LEGACY_MODEL_KEYS.some((k) => raw[k] != null);
+}
+function dedupeSteps(arr) {
+    const seen = new Set();
+    return arr.filter((x) => {
+        const k = `${x.provider}:${x.model}`;
+        if (seen.has(k))
+            return false;
+        seen.add(k);
+        return true;
+    });
+}
+// Build a cascade from the deprecated scalar fields so a pre-`cascades` ai.json
+// keeps its old behavior: provider order honored, fallback toggled, Ollama tail
+// appended. Used only when a file/env sets legacy fields but no explicit cascade.
+function synthesizeCascades(s) {
+    const anthroMain = { provider: 'anthropic', model: s.anthropicModel };
+    const anthroFast = { provider: 'anthropic', model: s.anthropicModelFast };
+    const gemMain = { provider: 'gemini', model: s.geminiModel };
+    const gemMainFb = { provider: 'gemini', model: s.geminiModelFallback };
+    const gemFast = { provider: 'gemini', model: s.geminiModelFast };
+    const ollMain = { provider: 'ollama', model: 'qwen3:30b-a3b' };
+    const ollFast = { provider: 'ollama', model: 'qwen3.5:9b' };
+    const geminiFirst = s.provider === 'gemini';
+    if (!s.fallbackEnabled) {
+        return geminiFirst
+            ? { main: dedupeSteps([gemMain, gemMainFb]), fast: dedupeSteps([gemFast]) }
+            : { main: [anthroMain], fast: [anthroFast] };
+    }
+    return geminiFirst
+        ? {
+            main: dedupeSteps([gemMain, gemMainFb, anthroMain, ollMain]),
+            fast: dedupeSteps([gemFast, anthroFast, ollFast]),
+        }
+        : {
+            main: dedupeSteps([anthroMain, gemMain, gemMainFb, ollMain]),
+            fast: dedupeSteps([anthroFast, gemFast, ollFast]),
+        };
+}
+// Keep the deprecated scalar fields consistent with the active cascade so older
+// consumers (e.g. apps reading `anthropicModel`) see the model the cascade uses.
+function backfillLegacy(s) {
+    const firstOf = (tier, p) => tier.find((x) => x.provider === p)?.model;
+    return {
+        ...s,
+        anthropicModel: firstOf(s.cascades.main, 'anthropic') ?? s.anthropicModel,
+        anthropicModelFast: firstOf(s.cascades.fast, 'anthropic') ?? s.anthropicModelFast,
+        geminiModel: firstOf(s.cascades.main, 'gemini') ?? s.geminiModel,
+        geminiModelFast: firstOf(s.cascades.fast, 'gemini') ?? s.geminiModelFast,
+    };
+}
+// Parsed-settings memo keyed by ai.json mtime: avoids re-running zod (+ the
+// back-compat reconciliation) on every call within a request. Invalidated by a
+// file write (mtime changes) or _clearCache (tests / env changes).
+let settingsMemo = null;
 function readAiSettings() {
+    const full = path_1.default.join(CONTROL_DIR(), 'ai.json');
+    let mtimeMs = -1;
+    try {
+        mtimeMs = fs_1.default.statSync(full).mtimeMs;
+    }
+    catch {
+        /* absent → sentinel -1 (env/defaults only) */
+    }
+    if (settingsMemo && settingsMemo.mtimeMs === mtimeMs)
+        return settingsMemo.value;
     const env = aiEnvDefaults();
-    const file = readRaw('ai.json') ?? {};
+    const rawFile = readRaw('ai.json') ?? {};
     // Drop undefined env entries so they don't clobber file/schema defaults.
     const envClean = Object.fromEntries(Object.entries(env).filter(([, v]) => v != null));
-    return schema_1.AI_SETTINGS_SCHEMA.parse({ ...envClean, ...file });
+    let settings = schema_1.AI_SETTINGS_SCHEMA.parse({ ...envClean, ...rawFile });
+    // If the file predates `cascades` but set legacy model fields, derive a cascade
+    // from them so behavior is preserved until the cascade is published explicitly.
+    const explicitCascades = rawFile.cascades != null;
+    if (!explicitCascades && (hasLegacyModelOverride(rawFile) || hasLegacyModelOverride(envClean))) {
+        settings = { ...settings, cascades: synthesizeCascades(settings) };
+    }
+    settings = backfillLegacy(settings);
+    settingsMemo = { mtimeMs, value: settings };
+    return settings;
 }
 /** Did the AI settings come from the published file or env/defaults? (drift signal) */
 function aiConfigSource() {
@@ -126,4 +210,5 @@ function revokeJti(jti, exp) {
 /** Test/maintenance helper — clears the mtime cache. */
 function _clearCache() {
     cache.clear();
+    settingsMemo = null;
 }

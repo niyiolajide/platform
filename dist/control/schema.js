@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.APPS_SCHEMA = exports.APP_INFO_SCHEMA = exports.REVOCATIONS_SCHEMA = exports.NOTIFY_SETTINGS_SCHEMA = exports.NOTIFY_CHANNEL = exports.AI_SETTINGS_SCHEMA = void 0;
+exports.APPS_SCHEMA = exports.APP_INFO_SCHEMA = exports.REVOCATIONS_SCHEMA = exports.NOTIFY_SETTINGS_SCHEMA = exports.NOTIFY_CHANNEL = exports.AI_SETTINGS_SCHEMA = exports.OLLAMA_SCHEMA = exports.CASCADES_SCHEMA = exports.DEFAULT_CASCADES = exports.CASCADE_STEP_SCHEMA = exports.PROVIDER_KIND = void 0;
 const zod_1 = require("zod");
 // ── Control-bundle contract ───────────────────────────────────────────────────
 // These zod schemas are the SINGLE source of truth for the files the hub publishes
@@ -8,14 +8,66 @@ const zod_1 = require("zod");
 // the apps (readers) both import these, so the contract cannot drift. Every file
 // carries a `schemaVersion`; readers are tolerant (defaults fill missing fields)
 // so an older reader survives a newer file and vice-versa.
+// ── AI provider cascade ───────────────────────────────────────────────────────
+// The model-selection priority is a single ordered list per tier. Each step names
+// a provider + a concrete model; the resolver walks the list top-to-bottom at call
+// time, falling to the next step on any failure (outage, quota, empty/refusal).
+// This replaces the old (provider + fallbackEnabled + per-provider model) scheme;
+// the legacy scalar fields below are retained, derived from the cascade, so older
+// consumers that read `anthropicModel` etc. keep working.
+exports.PROVIDER_KIND = zod_1.z.enum(['gemini', 'anthropic', 'ollama']);
+exports.CASCADE_STEP_SCHEMA = zod_1.z.object({
+    provider: exports.PROVIDER_KIND,
+    model: zod_1.z.string().min(1),
+});
+// Default priority: fast cloud → quality cloud → free local (survives a cloud
+// outage). Gemini leads; Claude is the cross-provider fallback; Ollama (on-LAN,
+// no key, no anonymization) is the last-resort tail.
+exports.DEFAULT_CASCADES = {
+    main: [
+        { provider: 'gemini', model: 'gemini-2.5-pro' },
+        { provider: 'gemini', model: 'gemini-2.5-flash' },
+        { provider: 'anthropic', model: 'claude-sonnet-4-6' },
+        { provider: 'ollama', model: 'qwen3:30b-a3b' },
+    ],
+    fast: [
+        { provider: 'gemini', model: 'gemini-2.5-flash' },
+        { provider: 'gemini', model: 'gemini-2.5-flash-lite' },
+        { provider: 'anthropic', model: 'claude-haiku-4-5' },
+        { provider: 'ollama', model: 'qwen3.5:9b' },
+    ],
+};
+exports.CASCADES_SCHEMA = zod_1.z
+    .object({
+    main: zod_1.z.array(exports.CASCADE_STEP_SCHEMA).min(1).default(exports.DEFAULT_CASCADES.main),
+    fast: zod_1.z.array(exports.CASCADE_STEP_SCHEMA).min(1).default(exports.DEFAULT_CASCADES.fast),
+})
+    .default({ main: exports.DEFAULT_CASCADES.main, fast: exports.DEFAULT_CASCADES.fast });
+// Local Ollama connection (no API key). `keepAlive` is passed through to Ollama:
+// -1 pins the model in VRAM so the intermittent fallback stays warm (avoids the
+// multi-second cold-load); a string like "30m" or seconds as a number also work.
+exports.OLLAMA_SCHEMA = zod_1.z
+    .object({
+    baseUrl: zod_1.z.string().default('http://media001:80'),
+    keepAlive: zod_1.z.union([zod_1.z.string(), zod_1.z.number()]).default(-1),
+})
+    .default({ baseUrl: 'http://media001:80', keepAlive: -1 });
 exports.AI_SETTINGS_SCHEMA = zod_1.z.object({
     schemaVersion: zod_1.z.number().int().default(1),
-    provider: zod_1.z.enum(['anthropic', 'gemini']).default('anthropic'),
-    fallbackEnabled: zod_1.z.boolean().default(true),
+    // The ordered model-selection priority — the source of truth for the resolver.
+    cascades: exports.CASCADES_SCHEMA,
+    ollama: exports.OLLAMA_SCHEMA,
     // Reversibly tokenize PII (emails/phones/SSNs/cards/IBANs/IPs/addresses/names)
     // out of every prompt+system before it leaves the host for a model API, then
     // restore it in the response. On by default. Monetary amounts are never masked.
+    // (Local Ollama steps skip masking — data never leaves the LAN.)
     anonymizeRequests: zod_1.z.boolean().default(true),
+    // ── Legacy fields (deprecated) ──────────────────────────────────────────────
+    // Retained for back-compat: the store derives a cascade from these when a file
+    // predates `cascades`, and backfills them from the active cascade so consumers
+    // still reading `anthropicModel` etc. keep working. Prefer `cascades`.
+    provider: zod_1.z.enum(['anthropic', 'gemini']).default('anthropic'),
+    fallbackEnabled: zod_1.z.boolean().default(true),
     anthropicModel: zod_1.z.string().default('claude-sonnet-4-6'),
     anthropicModelFast: zod_1.z.string().default('claude-haiku-4-5-20251001'),
     geminiModel: zod_1.z.string().default('gemini-2.5-flash'),

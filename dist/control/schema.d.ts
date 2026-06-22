@@ -1,29 +1,174 @@
 import { z } from 'zod';
+export declare const PROVIDER_KIND: z.ZodEnum<["gemini", "anthropic", "ollama"]>;
+export type ProviderKind = z.infer<typeof PROVIDER_KIND>;
+export declare const CASCADE_STEP_SCHEMA: z.ZodObject<{
+    provider: z.ZodEnum<["gemini", "anthropic", "ollama"]>;
+    model: z.ZodString;
+}, "strip", z.ZodTypeAny, {
+    provider: "gemini" | "anthropic" | "ollama";
+    model: string;
+}, {
+    provider: "gemini" | "anthropic" | "ollama";
+    model: string;
+}>;
+export type CascadeStep = z.infer<typeof CASCADE_STEP_SCHEMA>;
+export declare const DEFAULT_CASCADES: {
+    main: CascadeStep[];
+    fast: CascadeStep[];
+};
+export declare const CASCADES_SCHEMA: z.ZodDefault<z.ZodObject<{
+    main: z.ZodDefault<z.ZodArray<z.ZodObject<{
+        provider: z.ZodEnum<["gemini", "anthropic", "ollama"]>;
+        model: z.ZodString;
+    }, "strip", z.ZodTypeAny, {
+        provider: "gemini" | "anthropic" | "ollama";
+        model: string;
+    }, {
+        provider: "gemini" | "anthropic" | "ollama";
+        model: string;
+    }>, "many">>;
+    fast: z.ZodDefault<z.ZodArray<z.ZodObject<{
+        provider: z.ZodEnum<["gemini", "anthropic", "ollama"]>;
+        model: z.ZodString;
+    }, "strip", z.ZodTypeAny, {
+        provider: "gemini" | "anthropic" | "ollama";
+        model: string;
+    }, {
+        provider: "gemini" | "anthropic" | "ollama";
+        model: string;
+    }>, "many">>;
+}, "strip", z.ZodTypeAny, {
+    main: {
+        provider: "gemini" | "anthropic" | "ollama";
+        model: string;
+    }[];
+    fast: {
+        provider: "gemini" | "anthropic" | "ollama";
+        model: string;
+    }[];
+}, {
+    main?: {
+        provider: "gemini" | "anthropic" | "ollama";
+        model: string;
+    }[] | undefined;
+    fast?: {
+        provider: "gemini" | "anthropic" | "ollama";
+        model: string;
+    }[] | undefined;
+}>>;
+export declare const OLLAMA_SCHEMA: z.ZodDefault<z.ZodObject<{
+    baseUrl: z.ZodDefault<z.ZodString>;
+    keepAlive: z.ZodDefault<z.ZodUnion<[z.ZodString, z.ZodNumber]>>;
+}, "strip", z.ZodTypeAny, {
+    baseUrl: string;
+    keepAlive: string | number;
+}, {
+    baseUrl?: string | undefined;
+    keepAlive?: string | number | undefined;
+}>>;
 export declare const AI_SETTINGS_SCHEMA: z.ZodObject<{
     schemaVersion: z.ZodDefault<z.ZodNumber>;
+    cascades: z.ZodDefault<z.ZodObject<{
+        main: z.ZodDefault<z.ZodArray<z.ZodObject<{
+            provider: z.ZodEnum<["gemini", "anthropic", "ollama"]>;
+            model: z.ZodString;
+        }, "strip", z.ZodTypeAny, {
+            provider: "gemini" | "anthropic" | "ollama";
+            model: string;
+        }, {
+            provider: "gemini" | "anthropic" | "ollama";
+            model: string;
+        }>, "many">>;
+        fast: z.ZodDefault<z.ZodArray<z.ZodObject<{
+            provider: z.ZodEnum<["gemini", "anthropic", "ollama"]>;
+            model: z.ZodString;
+        }, "strip", z.ZodTypeAny, {
+            provider: "gemini" | "anthropic" | "ollama";
+            model: string;
+        }, {
+            provider: "gemini" | "anthropic" | "ollama";
+            model: string;
+        }>, "many">>;
+    }, "strip", z.ZodTypeAny, {
+        main: {
+            provider: "gemini" | "anthropic" | "ollama";
+            model: string;
+        }[];
+        fast: {
+            provider: "gemini" | "anthropic" | "ollama";
+            model: string;
+        }[];
+    }, {
+        main?: {
+            provider: "gemini" | "anthropic" | "ollama";
+            model: string;
+        }[] | undefined;
+        fast?: {
+            provider: "gemini" | "anthropic" | "ollama";
+            model: string;
+        }[] | undefined;
+    }>>;
+    ollama: z.ZodDefault<z.ZodObject<{
+        baseUrl: z.ZodDefault<z.ZodString>;
+        keepAlive: z.ZodDefault<z.ZodUnion<[z.ZodString, z.ZodNumber]>>;
+    }, "strip", z.ZodTypeAny, {
+        baseUrl: string;
+        keepAlive: string | number;
+    }, {
+        baseUrl?: string | undefined;
+        keepAlive?: string | number | undefined;
+    }>>;
+    anonymizeRequests: z.ZodDefault<z.ZodBoolean>;
     provider: z.ZodDefault<z.ZodEnum<["anthropic", "gemini"]>>;
     fallbackEnabled: z.ZodDefault<z.ZodBoolean>;
-    anonymizeRequests: z.ZodDefault<z.ZodBoolean>;
     anthropicModel: z.ZodDefault<z.ZodString>;
     anthropicModelFast: z.ZodDefault<z.ZodString>;
     geminiModel: z.ZodDefault<z.ZodString>;
     geminiModelFast: z.ZodDefault<z.ZodString>;
     geminiModelFallback: z.ZodDefault<z.ZodString>;
 }, "strip", z.ZodTypeAny, {
+    ollama: {
+        baseUrl: string;
+        keepAlive: string | number;
+    };
+    provider: "gemini" | "anthropic";
     schemaVersion: number;
-    provider: "anthropic" | "gemini";
-    fallbackEnabled: boolean;
+    cascades: {
+        main: {
+            provider: "gemini" | "anthropic" | "ollama";
+            model: string;
+        }[];
+        fast: {
+            provider: "gemini" | "anthropic" | "ollama";
+            model: string;
+        }[];
+    };
     anonymizeRequests: boolean;
+    fallbackEnabled: boolean;
     anthropicModel: string;
     anthropicModelFast: string;
     geminiModel: string;
     geminiModelFast: string;
     geminiModelFallback: string;
 }, {
+    ollama?: {
+        baseUrl?: string | undefined;
+        keepAlive?: string | number | undefined;
+    } | undefined;
+    provider?: "gemini" | "anthropic" | undefined;
     schemaVersion?: number | undefined;
-    provider?: "anthropic" | "gemini" | undefined;
-    fallbackEnabled?: boolean | undefined;
+    cascades?: {
+        main?: {
+            provider: "gemini" | "anthropic" | "ollama";
+            model: string;
+        }[] | undefined;
+        fast?: {
+            provider: "gemini" | "anthropic" | "ollama";
+            model: string;
+        }[] | undefined;
+    } | undefined;
     anonymizeRequests?: boolean | undefined;
+    fallbackEnabled?: boolean | undefined;
     anthropicModel?: string | undefined;
     anthropicModelFast?: string | undefined;
     geminiModel?: string | undefined;

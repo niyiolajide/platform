@@ -54,9 +54,16 @@ describe('resolveAiProvider', () => {
     expect(resolveAiProvider()?.kind).toBe('gemini')
   })
 
-  it('reflects model names from the control bus', () => {
+  it('reflects model names from the control-bus cascade', () => {
     process.env.ANTHROPIC_API_KEY = 'k'
-    publishAiSettings(AI_SETTINGS_SCHEMA.parse({ anthropicModel: 'claude-opus-4-8' }))
+    publishAiSettings(
+      AI_SETTINGS_SCHEMA.parse({
+        cascades: {
+          main: [{ provider: 'anthropic', model: 'claude-opus-4-8' }],
+          fast: [{ provider: 'anthropic', model: 'claude-haiku-4-5' }],
+        },
+      }),
+    )
     _clearCache()
     expect(getProvider('anthropic').modelName('main')).toBe('claude-opus-4-8')
   })
