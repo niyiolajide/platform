@@ -1,6 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk'
 import { keys } from '../config'
-import type { AttemptRequest, ProviderAdapter, StructuredAttempt } from './types'
+import type { AttemptRequest, ProviderAdapter, StructuredAttempt, TokenUsage } from './types'
 
 // Single place all AI code gets its Anthropic client. The key is read live from
 // process.env (sourced from shared.env); the model is chosen by the cascade.
@@ -51,9 +51,10 @@ export const anthropicAdapter: ProviderAdapter = {
       },
       { signal },
     )
+    const usage = anthropicUsage(resp)
     const tu = resp.content.find((b) => b.type === 'tool_use')
-    if (!tu || tu.type !== 'tool_use') return null
-    return tu.input as Record<string, unknown>
+    if (!tu || tu.type !== 'tool_use') return { content: null, usage }
+    return { content: tu.input as Record<string, unknown>, usage }
   },
 
   async callText(model, req: AttemptRequest, signal) {
@@ -66,11 +67,17 @@ export const anthropicAdapter: ProviderAdapter = {
       },
       { signal },
     )
+    const usage = anthropicUsage(resp)
     const text = resp.content
       .filter((b): b is Anthropic.TextBlock => b.type === 'text')
       .map((b) => b.text)
       .join('')
       .trim()
-    return text || null
+    return { content: text || null, usage }
   },
+}
+
+function anthropicUsage(resp: Anthropic.Message): TokenUsage {
+  const u = resp.usage
+  return { tokensIn: u?.input_tokens ?? undefined, tokensOut: u?.output_tokens ?? undefined }
 }

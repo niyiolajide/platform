@@ -1,6 +1,19 @@
 import type { ProviderKind } from '../control/schema';
 export type AiProviderKind = ProviderKind;
-export interface StructuredRequest {
+/**
+ * Optional, additive telemetry attribution carried on every AI request. Purely
+ * metadata for the AiCallRecord — it never affects model selection or output, so
+ * the public AiProvider API stays backward-compatible (all fields optional).
+ */
+export interface AiCallOpts {
+    /** Originating app; defaults to env APP_NAME when omitted. */
+    app?: string;
+    /** What this call is for (e.g. 'digest', 'classify-txn'). */
+    purpose?: string;
+    /** End-user the call is made for, if any. */
+    userId?: string | null;
+}
+export interface StructuredRequest extends AiCallOpts {
     prompt: string;
     system?: string;
     toolName: string;
@@ -9,7 +22,7 @@ export interface StructuredRequest {
     maxTokens?: number;
     model?: 'main' | 'fast';
 }
-export interface TextRequest {
+export interface TextRequest extends AiCallOpts {
     prompt: string;
     system?: string;
     maxTokens?: number;

@@ -8,7 +8,9 @@ exports.probeModel = probeModel;
 const config_1 = require("../config");
 const store_1 = require("../control/store");
 const anonymize_1 = require("./anonymize");
+const models_1 = require("./models");
 const registry_1 = require("./registry");
+const telemetry_1 = require("./telemetry");
 // Per-attempt deadline so a hung call falls through to the next step. Ollama gets a
 // wider budget for a possible cold model-load (mitigated by keep_alive pinning).
 const TIMEOUT_MS = {
@@ -51,11 +53,51 @@ async function runCascade(tier, kind, req, pref, onModel, only) {
     if (steps.length === 0)
         return null;
     const logger = (0, config_1.getLogger)();
+    // Telemetry is read live (mirrors anonymizeRequests). Only build records when a
+    // sink is installed AND logging is on — otherwise the cascade is unchanged.
+    const telemetryOn = settings.logAiCalls && (0, telemetry_1.hasAiTelemetrySink)();
+    const logPayloads = settings.logPayloads;
+    const app = req.app || process.env.APP_NAME || 'unknown';
+    const purpose = req.purpose || 'unknown';
+    const userId = req.userId ?? null;
     // Anonymize ONCE, reused across all cloud attempts. Local (Ollama) steps keep the
     // original text — data never leaves the LAN, so masking would only cost fidelity.
     const anon = settings.anonymizeRequests ? (0, anonymize_1.createAnonymizer)() : null;
     const maskedPrompt = anon ? anon.mask(req.prompt) : req.prompt;
     const maskedSystem = anon && req.system != null ? anon.mask(req.system) : req.system;
+    // Emit a record for this attempt. Best-effort: recordAiCall anonymizes the
+    // payloads itself (idempotent) and never throws. We pass the masked prompt when
+    // masking applied to this step, else the raw prompt (recordAiCall masks it anyway).
+    const emit = (step, attemptIdx, status, ms, promptSent, responseText, usage, error) => {
+        if (!telemetryOn)
+            return;
+        const rec = {
+            id: (0, telemetry_1.ulid)(),
+            ts: new Date().toISOString(),
+            app,
+            userId,
+            purpose,
+            caller: 'cascade',
+            tier,
+            provider: step.provider,
+            model: step.model,
+            attempt: attemptIdx,
+            status,
+            error: error ?? null,
+            latencyMs: ms,
+            ...(usage?.tokensIn != null ? { tokensIn: usage.tokensIn } : {}),
+            ...(usage?.tokensOut != null ? { tokensOut: usage.tokensOut } : {}),
+        };
+        const cost = (0, models_1.estimateCostCents)(step.model, usage?.tokensIn, usage?.tokensOut);
+        if (cost != null)
+            rec.costCentsEst = cost;
+        if (logPayloads) {
+            rec.prompt = promptSent;
+            if (responseText != null)
+                rec.response = responseText;
+        }
+        (0, telemetry_1.recordAiCall)(rec);
+    };
     for (let i = 0; i < steps.length; i++) {
         const step = steps[i];
         const adapter = (0, registry_1.getAdapter)(step.provider);
@@ -65,7 +107,7 @@ async function runCascade(tier, kind, req, pref, onModel, only) {
         const system = useMask ? maskedSystem : req.system;
         const startedAt = Date.now();
         try {
-            const out = await withTimeout((signal) => {
+            const result = await withTimeout((signal) => {
                 if (kind === 'structured') {
                     const r = req;
                     const attempt = {
@@ -82,19 +124,30 @@ async function runCascade(tier, kind, req, pref, onModel, only) {
                 return adapter.callText(step.model, attempt, signal);
             }, TIMEOUT_MS[step.provider]);
             const ms = Date.now() - startedAt;
+            const out = result.content;
             if (out != null) {
                 onModel(tier, step.model);
                 logger.info({ tier, kind, provider: step.provider, model: step.model, attempt: i + 1, ms }, '[ai/cascade] answered');
-                if (!useMask || !anon)
-                    return out;
-                return kind === 'structured'
-                    ? anon.unmaskDeep(out)
-                    : anon.unmask(out);
+                const restored = !useMask || !anon
+                    ? out
+                    : kind === 'structured'
+                        ? anon.unmaskDeep(out)
+                        : anon.unmask(out);
+                // Log the response as text (stringify structured output). The masked prompt
+                // that left the host (`prompt`) is what we record; recordAiCall masks again
+                // (idempotent) for safety on the raw path.
+                const responseText = typeof restored === 'string' ? restored : JSON.stringify(restored);
+                emit(step, i + 1, 'ok', ms, prompt, responseText, result.usage);
+                return restored;
             }
             logger.warn({ tier, kind, provider: step.provider, model: step.model, attempt: i + 1, ms, reason: 'empty', willFallback }, '[ai/cascade] empty response');
+            emit(step, i + 1, 'empty', ms, prompt, null, result.usage);
         }
         catch (err) {
-            logger.warn({ err, tier, kind, provider: step.provider, model: step.model, attempt: i + 1, ms: Date.now() - startedAt, willFallback }, '[ai/cascade] attempt failed');
+            const ms = Date.now() - startedAt;
+            const msg = err instanceof Error ? err.message : String(err);
+            logger.warn({ err, tier, kind, provider: step.provider, model: step.model, attempt: i + 1, ms, willFallback }, '[ai/cascade] attempt failed');
+            emit(step, i + 1, 'error', ms, prompt, null, undefined, msg);
         }
     }
     logger.warn({ tier, kind, attempts: steps.length }, '[ai/cascade] all steps failed');
@@ -167,7 +220,7 @@ async function probeModel(provider, model, timeoutMs = 20000) {
     try {
         const out = await withTimeout((signal) => adapter.callText(model, { prompt: 'Reply with exactly one word: ok', maxTokens: 8 }, signal), timeoutMs);
         const ms = Date.now() - start;
-        return out != null ? { ok: true, ms } : { ok: false, ms, error: 'empty response' };
+        return out.content != null ? { ok: true, ms } : { ok: false, ms, error: 'empty response' };
     }
     catch (e) {
         return { ok: false, ms: Date.now() - start, error: e instanceof Error ? e.message : String(e) };

@@ -18,8 +18,8 @@ function run(kind: string, model: string, type: 'structured' | 'text', prompt: s
   calls.push({ kind, model, type, prompt })
   const o = ctl[kind][type]
   if (o.mode === 'throw') throw new Error(`${kind} boom`)
-  if (o.mode === 'null') return null
-  return o.value
+  if (o.mode === 'null') return { content: null }
+  return { content: o.value, usage: { tokensIn: 10, tokensOut: 5 } }
 }
 
 vi.mock('../src/ai/registry', () => {
@@ -40,6 +40,7 @@ vi.mock('../src/ai/registry', () => {
 })
 
 import { resolveAiProvider, getProvider, anyAiConfigured } from '../src/ai/provider'
+import { setAiTelemetrySink, type AiCallRecord } from '../src/ai/telemetry'
 import { publishAiSettings, _clearCache, AI_SETTINGS_SCHEMA } from '../src/control'
 
 const SREQ = { prompt: 'hello', toolName: 't', toolDescription: 'd', jsonSchema: { type: 'object' } }
@@ -146,5 +147,94 @@ describe('anonymization policy in the cascade', () => {
     expect(gemini.prompt).toContain('[EMAIL_1]') // cloud saw a masked prompt
     expect(gemini.prompt).not.toContain('jane@example.com')
     expect(ollama.prompt).toBe(prompt) // local saw the original, unmasked
+  })
+})
+
+describe('cascade telemetry', () => {
+  afterEach(() => setAiTelemetrySink(null))
+
+  it('emits no records when no sink is installed', async () => {
+    noAnon()
+    setAiTelemetrySink(null)
+    // (No throw, no observable effect — just confirm the call still works.)
+    const out = await resolveAiProvider()!.generateText({ prompt: 'hi' })
+    expect(out).toBe('g')
+  })
+
+  it('emits an ok record for the answering step with tier/provider/model/usage/cost', async () => {
+    noAnon()
+    const seen: AiCallRecord[] = []
+    setAiTelemetrySink((r) => seen.push(r))
+    await resolveAiProvider()!.generateText({ prompt: 'hi', app: 'vantage', purpose: 'digest', userId: 'u9' })
+    expect(seen).toHaveLength(1)
+    expect(seen[0]).toMatchObject({
+      app: 'vantage',
+      purpose: 'digest',
+      userId: 'u9',
+      caller: 'cascade',
+      tier: 'main',
+      provider: 'gemini',
+      model: 'gemini-2.5-pro',
+      attempt: 1,
+      status: 'ok',
+      tokensIn: 10,
+      tokensOut: 5,
+    })
+    // gemini-2.5-pro priced → cost present.
+    expect(typeof seen[0].costCentsEst).toBe('number')
+    expect(seen[0].id).toHaveLength(26)
+    expect(seen[0].prompt).toBe('hi')
+    expect(seen[0].response).toBe('g')
+  })
+
+  it('emits one record per attempt incl. error + the final ok', async () => {
+    noAnon()
+    const seen: AiCallRecord[] = []
+    setAiTelemetrySink((r) => seen.push(r))
+    ctl.gemini.text = { mode: 'throw' } // both gemini steps throw → anthropic answers
+    const out = await resolveAiProvider()!.generateText({ prompt: 'hi' })
+    expect(out).toBe('a')
+    expect(seen.map((r) => `${r.provider}:${r.status}`)).toEqual([
+      'gemini:error',
+      'gemini:error',
+      'anthropic:ok',
+    ])
+    expect(seen[0].error).toContain('boom')
+    expect(seen[2].attempt).toBe(3)
+  })
+
+  it('omits prompt/response when logPayloads is false', async () => {
+    publishAiSettings(AI_SETTINGS_SCHEMA.parse({ anonymizeRequests: false, logPayloads: false }))
+    _clearCache()
+    const seen: AiCallRecord[] = []
+    setAiTelemetrySink((r) => seen.push(r))
+    await resolveAiProvider()!.generateText({ prompt: 'secret prompt' })
+    expect(seen).toHaveLength(1)
+    expect(seen[0].prompt).toBeUndefined()
+    expect(seen[0].response).toBeUndefined()
+    // Metadata still recorded.
+    expect(seen[0].status).toBe('ok')
+  })
+
+  it('emits nothing when logAiCalls is false', async () => {
+    publishAiSettings(AI_SETTINGS_SCHEMA.parse({ anonymizeRequests: false, logAiCalls: false }))
+    _clearCache()
+    const seen: AiCallRecord[] = []
+    setAiTelemetrySink((r) => seen.push(r))
+    await resolveAiProvider()!.generateText({ prompt: 'hi' })
+    expect(seen).toHaveLength(0)
+  })
+
+  it('records the ANONYMIZED prompt+response when anonymize is on', async () => {
+    publishAiSettings(AI_SETTINGS_SCHEMA.parse({})) // anonymize on (default)
+    _clearCache()
+    const seen: AiCallRecord[] = []
+    setAiTelemetrySink((r) => seen.push(r))
+    ctl.gemini.text = { mode: 'value', value: 'see jane@example.com' }
+    await resolveAiProvider()!.generateText({ prompt: 'Email jane@example.com now' })
+    const rec = seen.find((r) => r.status === 'ok')!
+    expect(rec.prompt).not.toContain('jane@example.com')
+    expect(rec.prompt).toContain('[EMAIL_1]')
+    expect(rec.response).not.toContain('jane@example.com')
   })
 })

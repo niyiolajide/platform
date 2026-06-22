@@ -41,7 +41,7 @@ exports.geminiAdapter = {
     async callStructured(model, req, _signal) {
         const client = genai();
         if (!client)
-            return null;
+            return { content: null };
         // Prefer controlled generation (responseSchema) for schema-faithful JSON; fall
         // back to mime-type-json + a prompt-appended schema when the schema uses
         // constructs the converter can't express.
@@ -56,18 +56,23 @@ exports.geminiAdapter = {
             ? req.prompt
             : `${req.prompt}\n\nReturn ONLY a JSON object conforming to this JSON Schema (no markdown, no commentary):\n${JSON.stringify(req.jsonSchema)}`;
         const resp = await m.generateContent(prompt);
-        return (0, util_1.parseJsonObject)(resp.response.text());
+        return { content: (0, util_1.parseJsonObject)(resp.response.text()), usage: geminiUsage(resp) };
     },
     async callText(model, req, _signal) {
         const client = genai();
         if (!client)
-            return null;
+            return { content: null };
         const m = client.getGenerativeModel({
             model,
             ...(req.system ? { systemInstruction: req.system } : {}),
             generationConfig: geminiGenConfig(model, req.maxTokens ?? 1024, false),
         }, { timeout: 60000 });
         const resp = await m.generateContent(req.prompt);
-        return resp.response.text().trim() || null;
+        return { content: resp.response.text().trim() || null, usage: geminiUsage(resp) };
     },
 };
+// Gemini reports usage on response.usageMetadata (prompt/candidates token counts).
+function geminiUsage(resp) {
+    const u = resp.response?.usageMetadata;
+    return { tokensIn: u?.promptTokenCount ?? undefined, tokensOut: u?.candidatesTokenCount ?? undefined };
+}

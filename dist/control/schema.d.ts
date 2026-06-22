@@ -119,6 +119,10 @@ export declare const AI_SETTINGS_SCHEMA: z.ZodObject<{
         keepAlive?: string | number | undefined;
     }>>;
     anonymizeRequests: z.ZodDefault<z.ZodBoolean>;
+    logAiCalls: z.ZodDefault<z.ZodBoolean>;
+    logPayloads: z.ZodDefault<z.ZodBoolean>;
+    aiLogRetentionDays: z.ZodDefault<z.ZodNumber>;
+    aiLogPayloadRetentionDays: z.ZodDefault<z.ZodNumber>;
     provider: z.ZodDefault<z.ZodEnum<["anthropic", "gemini"]>>;
     fallbackEnabled: z.ZodDefault<z.ZodBoolean>;
     anthropicModel: z.ZodDefault<z.ZodString>;
@@ -144,6 +148,10 @@ export declare const AI_SETTINGS_SCHEMA: z.ZodObject<{
         }[];
     };
     anonymizeRequests: boolean;
+    logAiCalls: boolean;
+    logPayloads: boolean;
+    aiLogRetentionDays: number;
+    aiLogPayloadRetentionDays: number;
     fallbackEnabled: boolean;
     anthropicModel: string;
     anthropicModelFast: string;
@@ -168,6 +176,10 @@ export declare const AI_SETTINGS_SCHEMA: z.ZodObject<{
         }[] | undefined;
     } | undefined;
     anonymizeRequests?: boolean | undefined;
+    logAiCalls?: boolean | undefined;
+    logPayloads?: boolean | undefined;
+    aiLogRetentionDays?: number | undefined;
+    aiLogPayloadRetentionDays?: number | undefined;
     fallbackEnabled?: boolean | undefined;
     anthropicModel?: string | undefined;
     anthropicModelFast?: string | undefined;

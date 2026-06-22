@@ -69,6 +69,16 @@ export const AI_SETTINGS_SCHEMA = z.object({
   // restore it in the response. On by default. Monetary amounts are never masked.
   // (Local Ollama steps skip masking — data never leaves the LAN.)
   anonymizeRequests: z.boolean().default(true),
+  // ── AI-call telemetry / logging (hub-managed) ───────────────────────────────
+  // When on, runCascade emits an AiCallRecord per attempt to the configured
+  // telemetry sink (no-op if unconfigured). When `logPayloads` is on, the record
+  // carries the ANONYMIZED prompt + response text; when off, payloads are omitted
+  // (metadata only). Retention days are read by the Hub's prune job (the lib does
+  // not prune — it just records). On by default for ALL apps.
+  logAiCalls: z.boolean().default(true),
+  logPayloads: z.boolean().default(true),
+  aiLogRetentionDays: z.number().int().min(1).default(30),
+  aiLogPayloadRetentionDays: z.number().int().min(1).default(30),
   // ── Legacy fields (deprecated) ──────────────────────────────────────────────
   // Retained for back-compat: the store derives a cascade from these when a file
   // predates `cascades`, and backfills them from the active cascade so consumers

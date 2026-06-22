@@ -2,8 +2,10 @@ import { getLogger } from '../config'
 import { readAiSettings } from '../control/store'
 import type { CascadeStep, ProviderKind } from '../control/schema'
 import { createAnonymizer, type Anonymizer } from './anonymize'
+import { estimateCostCents } from './models'
 import { ADAPTERS, getAdapter } from './registry'
-import type { AttemptRequest, StructuredAttempt } from './types'
+import { hasAiTelemetrySink, recordAiCall, ulid, type AiCallRecord } from './telemetry'
+import type { AttemptRequest, AttemptResult, StructuredAttempt, TokenUsage } from './types'
 
 // ── Unified AI provider cascade ───────────────────────────────────────────────
 // One ordered list of {provider, model} steps per tier (main/fast), walked top-to-
@@ -15,7 +17,21 @@ import type { AttemptRequest, StructuredAttempt } from './types'
 
 export type AiProviderKind = ProviderKind
 
-export interface StructuredRequest {
+/**
+ * Optional, additive telemetry attribution carried on every AI request. Purely
+ * metadata for the AiCallRecord — it never affects model selection or output, so
+ * the public AiProvider API stays backward-compatible (all fields optional).
+ */
+export interface AiCallOpts {
+  /** Originating app; defaults to env APP_NAME when omitted. */
+  app?: string
+  /** What this call is for (e.g. 'digest', 'classify-txn'). */
+  purpose?: string
+  /** End-user the call is made for, if any. */
+  userId?: string | null
+}
+
+export interface StructuredRequest extends AiCallOpts {
   prompt: string
   system?: string
   toolName: string
@@ -25,7 +41,7 @@ export interface StructuredRequest {
   model?: 'main' | 'fast'
 }
 
-export interface TextRequest {
+export interface TextRequest extends AiCallOpts {
   prompt: string
   system?: string
   maxTokens?: number
@@ -98,11 +114,59 @@ async function runCascade(
   if (steps.length === 0) return null
   const logger = getLogger()
 
+  // Telemetry is read live (mirrors anonymizeRequests). Only build records when a
+  // sink is installed AND logging is on — otherwise the cascade is unchanged.
+  const telemetryOn = settings.logAiCalls && hasAiTelemetrySink()
+  const logPayloads = settings.logPayloads
+  const app = (req as AiCallOpts).app || process.env.APP_NAME || 'unknown'
+  const purpose = (req as AiCallOpts).purpose || 'unknown'
+  const userId = (req as AiCallOpts).userId ?? null
+
   // Anonymize ONCE, reused across all cloud attempts. Local (Ollama) steps keep the
   // original text — data never leaves the LAN, so masking would only cost fidelity.
   const anon: Anonymizer | null = settings.anonymizeRequests ? createAnonymizer() : null
   const maskedPrompt = anon ? anon.mask(req.prompt) : req.prompt
   const maskedSystem = anon && req.system != null ? anon.mask(req.system) : req.system
+
+  // Emit a record for this attempt. Best-effort: recordAiCall anonymizes the
+  // payloads itself (idempotent) and never throws. We pass the masked prompt when
+  // masking applied to this step, else the raw prompt (recordAiCall masks it anyway).
+  const emit = (
+    step: CascadeStep,
+    attemptIdx: number,
+    status: AiCallRecord['status'],
+    ms: number,
+    promptSent: string,
+    responseText: string | null,
+    usage: TokenUsage | undefined,
+    error?: string,
+  ) => {
+    if (!telemetryOn) return
+    const rec: AiCallRecord = {
+      id: ulid(),
+      ts: new Date().toISOString(),
+      app,
+      userId,
+      purpose,
+      caller: 'cascade',
+      tier,
+      provider: step.provider,
+      model: step.model,
+      attempt: attemptIdx,
+      status,
+      error: error ?? null,
+      latencyMs: ms,
+      ...(usage?.tokensIn != null ? { tokensIn: usage.tokensIn } : {}),
+      ...(usage?.tokensOut != null ? { tokensOut: usage.tokensOut } : {}),
+    }
+    const cost = estimateCostCents(step.model, usage?.tokensIn, usage?.tokensOut)
+    if (cost != null) rec.costCentsEst = cost
+    if (logPayloads) {
+      rec.prompt = promptSent
+      if (responseText != null) rec.response = responseText
+    }
+    recordAiCall(rec)
+  }
 
   for (let i = 0; i < steps.length; i++) {
     const step = steps[i]
@@ -113,7 +177,7 @@ async function runCascade(
     const system = useMask ? maskedSystem : req.system
     const startedAt = Date.now()
     try {
-      const out = await withTimeout<Record<string, unknown> | string | null>((signal) => {
+      const result = await withTimeout<AttemptResult<Record<string, unknown> | string>>((signal) => {
         if (kind === 'structured') {
           const r = req as StructuredRequest
           const attempt: StructuredAttempt = {
@@ -131,26 +195,40 @@ async function runCascade(
       }, TIMEOUT_MS[step.provider])
 
       const ms = Date.now() - startedAt
+      const out = result.content
       if (out != null) {
         onModel(tier, step.model)
         logger.info(
           { tier, kind, provider: step.provider, model: step.model, attempt: i + 1, ms },
           '[ai/cascade] answered',
         )
-        if (!useMask || !anon) return out
-        return kind === 'structured'
-          ? anon.unmaskDeep(out as Record<string, unknown>)
-          : anon.unmask(out as string)
+        const restored =
+          !useMask || !anon
+            ? out
+            : kind === 'structured'
+              ? anon.unmaskDeep(out as Record<string, unknown>)
+              : anon.unmask(out as string)
+        // Log the response as text (stringify structured output). The masked prompt
+        // that left the host (`prompt`) is what we record; recordAiCall masks again
+        // (idempotent) for safety on the raw path.
+        const responseText =
+          typeof restored === 'string' ? restored : JSON.stringify(restored)
+        emit(step, i + 1, 'ok', ms, prompt, responseText, result.usage)
+        return restored
       }
       logger.warn(
         { tier, kind, provider: step.provider, model: step.model, attempt: i + 1, ms, reason: 'empty', willFallback },
         '[ai/cascade] empty response',
       )
+      emit(step, i + 1, 'empty', ms, prompt, null, result.usage)
     } catch (err) {
+      const ms = Date.now() - startedAt
+      const msg = err instanceof Error ? err.message : String(err)
       logger.warn(
-        { err, tier, kind, provider: step.provider, model: step.model, attempt: i + 1, ms: Date.now() - startedAt, willFallback },
+        { err, tier, kind, provider: step.provider, model: step.model, attempt: i + 1, ms, willFallback },
         '[ai/cascade] attempt failed',
       )
+      emit(step, i + 1, 'error', ms, prompt, null, undefined, msg)
     }
   }
   logger.warn({ tier, kind, attempts: steps.length }, '[ai/cascade] all steps failed')
@@ -241,7 +319,7 @@ export async function probeModel(
       timeoutMs,
     )
     const ms = Date.now() - start
-    return out != null ? { ok: true, ms } : { ok: false, ms, error: 'empty response' }
+    return out.content != null ? { ok: true, ms } : { ok: false, ms, error: 'empty response' }
   } catch (e) {
     return { ok: false, ms: Date.now() - start, error: e instanceof Error ? e.message : String(e) }
   }

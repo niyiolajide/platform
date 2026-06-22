@@ -1,5 +1,5 @@
 import { readAiSettings } from '../control/store'
-import type { AttemptRequest, ProviderAdapter, StructuredAttempt } from './types'
+import type { AttemptRequest, ProviderAdapter, StructuredAttempt, TokenUsage } from './types'
 import { parseJsonObject, stripThink } from './util'
 
 // Ollama (local, on-LAN) adapter. No API key. Because data never leaves the
@@ -10,7 +10,7 @@ import { parseJsonObject, stripThink } from './util'
 async function ollamaGenerate(
   body: Record<string, unknown>,
   signal: AbortSignal,
-): Promise<string> {
+): Promise<{ text: string; usage: TokenUsage }> {
   const { baseUrl, keepAlive } = readAiSettings().ollama
   const resp = await fetch(`${baseUrl.replace(/\/$/, '')}/api/generate`, {
     method: 'POST',
@@ -19,8 +19,15 @@ async function ollamaGenerate(
     signal,
   })
   if (!resp.ok) throw new Error(`ollama HTTP ${resp.status}`)
-  const data = (await resp.json()) as { response?: string }
-  return data.response ?? ''
+  const data = (await resp.json()) as {
+    response?: string
+    prompt_eval_count?: number
+    eval_count?: number
+  }
+  return {
+    text: data.response ?? '',
+    usage: { tokensIn: data.prompt_eval_count ?? undefined, tokensOut: data.eval_count ?? undefined },
+  }
 }
 
 export const ollamaAdapter: ProviderAdapter = {
@@ -30,7 +37,7 @@ export const ollamaAdapter: ProviderAdapter = {
   configured: () => Boolean(readAiSettings().ollama.baseUrl),
 
   async callStructured(model, req: StructuredAttempt, signal) {
-    const text = await ollamaGenerate(
+    const { text, usage } = await ollamaGenerate(
       {
         model,
         prompt: req.prompt,
@@ -40,11 +47,11 @@ export const ollamaAdapter: ProviderAdapter = {
       },
       signal,
     )
-    return parseJsonObject(stripThink(text))
+    return { content: parseJsonObject(stripThink(text)), usage }
   },
 
   async callText(model, req: AttemptRequest, signal) {
-    const text = await ollamaGenerate(
+    const { text, usage } = await ollamaGenerate(
       {
         model,
         prompt: req.prompt,
@@ -53,6 +60,6 @@ export const ollamaAdapter: ProviderAdapter = {
       },
       signal,
     )
-    return stripThink(text).trim() || null
+    return { content: stripThink(text).trim() || null, usage }
   },
 }

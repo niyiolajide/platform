@@ -18,7 +18,10 @@ async function ollamaGenerate(body, signal) {
     if (!resp.ok)
         throw new Error(`ollama HTTP ${resp.status}`);
     const data = (await resp.json());
-    return data.response ?? '';
+    return {
+        text: data.response ?? '',
+        usage: { tokensIn: data.prompt_eval_count ?? undefined, tokensOut: data.eval_count ?? undefined },
+    };
 }
 exports.ollamaAdapter = {
     kind: 'ollama',
@@ -26,22 +29,22 @@ exports.ollamaAdapter = {
     local: true,
     configured: () => Boolean((0, store_1.readAiSettings)().ollama.baseUrl),
     async callStructured(model, req, signal) {
-        const text = await ollamaGenerate({
+        const { text, usage } = await ollamaGenerate({
             model,
             prompt: req.prompt,
             ...(req.system ? { system: req.system } : {}),
             format: req.jsonSchema,
             options: { num_predict: req.maxTokens ?? 2048 },
         }, signal);
-        return (0, util_1.parseJsonObject)((0, util_1.stripThink)(text));
+        return { content: (0, util_1.parseJsonObject)((0, util_1.stripThink)(text)), usage };
     },
     async callText(model, req, signal) {
-        const text = await ollamaGenerate({
+        const { text, usage } = await ollamaGenerate({
             model,
             prompt: req.prompt,
             ...(req.system ? { system: req.system } : {}),
             options: { num_predict: req.maxTokens ?? 1024 },
         }, signal);
-        return (0, util_1.stripThink)(text).trim() || null;
+        return { content: (0, util_1.stripThink)(text).trim() || null, usage };
     },
 };
