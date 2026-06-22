@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.createAnonymizer = exports.AI_MODELS = exports.aiConfigSource = exports.readAiSettings = exports.AI_SETTINGS_SCHEMA = exports.probeModel = exports.resolveAiProvider = exports.anyAiConfigured = exports.getProvider = exports.AI_PROVIDERS = exports._resetAnthropic = exports.isAnthropicConfigured = exports.getAnthropic = void 0;
+exports.AI_TELEMETRY_BUFFER_KEY = exports.shipBuffer = exports.createRedisSink = exports.ulid = exports.recordAiCall = exports.hasAiTelemetrySink = exports.setAiTelemetrySink = exports.createAnonymizer = exports.estimateCostCents = exports.priceFor = exports.MODEL_PRICES = exports.AI_MODELS = exports.aiConfigSource = exports.readAiSettings = exports.AI_SETTINGS_SCHEMA = exports.probeModel = exports.resolveAiProvider = exports.anyAiConfigured = exports.getProvider = exports.AI_PROVIDERS = exports._resetAnthropic = exports.isAnthropicConfigured = exports.getAnthropic = void 0;
 var anthropic_1 = require("./anthropic");
 Object.defineProperty(exports, "getAnthropic", { enumerable: true, get: function () { return anthropic_1.getAnthropic; } });
 Object.defineProperty(exports, "isAnthropicConfigured", { enumerable: true, get: function () { return anthropic_1.isAnthropicConfigured; } });
@@ -19,5 +19,17 @@ Object.defineProperty(exports, "readAiSettings", { enumerable: true, get: functi
 Object.defineProperty(exports, "aiConfigSource", { enumerable: true, get: function () { return store_1.aiConfigSource; } });
 var models_1 = require("./models");
 Object.defineProperty(exports, "AI_MODELS", { enumerable: true, get: function () { return models_1.AI_MODELS; } });
+Object.defineProperty(exports, "MODEL_PRICES", { enumerable: true, get: function () { return models_1.MODEL_PRICES; } });
+Object.defineProperty(exports, "priceFor", { enumerable: true, get: function () { return models_1.priceFor; } });
+Object.defineProperty(exports, "estimateCostCents", { enumerable: true, get: function () { return models_1.estimateCostCents; } });
 var anonymize_1 = require("./anonymize");
 Object.defineProperty(exports, "createAnonymizer", { enumerable: true, get: function () { return anonymize_1.createAnonymizer; } });
+// ── AI-call telemetry ─────────────────────────────────────────────────────────
+var telemetry_1 = require("./telemetry");
+Object.defineProperty(exports, "setAiTelemetrySink", { enumerable: true, get: function () { return telemetry_1.setAiTelemetrySink; } });
+Object.defineProperty(exports, "hasAiTelemetrySink", { enumerable: true, get: function () { return telemetry_1.hasAiTelemetrySink; } });
+Object.defineProperty(exports, "recordAiCall", { enumerable: true, get: function () { return telemetry_1.recordAiCall; } });
+Object.defineProperty(exports, "ulid", { enumerable: true, get: function () { return telemetry_1.ulid; } });
+Object.defineProperty(exports, "createRedisSink", { enumerable: true, get: function () { return telemetry_1.createRedisSink; } });
+Object.defineProperty(exports, "shipBuffer", { enumerable: true, get: function () { return telemetry_1.shipBuffer; } });
+Object.defineProperty(exports, "AI_TELEMETRY_BUFFER_KEY", { enumerable: true, get: function () { return telemetry_1.AI_TELEMETRY_BUFFER_KEY; } });

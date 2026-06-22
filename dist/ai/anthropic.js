@@ -48,10 +48,11 @@ exports.anthropicAdapter = {
             tool_choice: { type: 'tool', name: req.toolName },
             messages: [{ role: 'user', content: req.prompt }],
         }, { signal });
+        const usage = anthropicUsage(resp);
         const tu = resp.content.find((b) => b.type === 'tool_use');
         if (!tu || tu.type !== 'tool_use')
-            return null;
-        return tu.input;
+            return { content: null, usage };
+        return { content: tu.input, usage };
     },
     async callText(model, req, signal) {
         const resp = await getAnthropic().messages.create({
@@ -60,11 +61,16 @@ exports.anthropicAdapter = {
             ...(req.system ? { system: req.system } : {}),
             messages: [{ role: 'user', content: req.prompt }],
         }, { signal });
+        const usage = anthropicUsage(resp);
         const text = resp.content
             .filter((b) => b.type === 'text')
             .map((b) => b.text)
             .join('')
             .trim();
-        return text || null;
+        return { content: text || null, usage };
     },
 };
+function anthropicUsage(resp) {
+    const u = resp.usage;
+    return { tokensIn: u?.input_tokens ?? undefined, tokensOut: u?.output_tokens ?? undefined };
+}
