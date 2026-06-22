@@ -1,18 +1,19 @@
-import type Anthropic from '@anthropic-ai/sdk'
-import { getLogger, keys } from '../config'
+import { getLogger } from '../config'
 import { readAiSettings } from '../control/store'
-import { getAnthropic } from './anthropic'
+import type { CascadeStep, ProviderKind } from '../control/schema'
 import { createAnonymizer, type Anonymizer } from './anonymize'
-import { AI_MODELS } from './models'
+import { ADAPTERS, getAdapter } from './registry'
+import type { AttemptRequest, StructuredAttempt } from './types'
 
-// ── Pluggable AI provider ─────────────────────────────────────────────────────
-// One interface over Claude (Anthropic) and Gemini (Google) so every app's
-// synthesis / insights / classification is provider-agnostic. The active provider
-// + models + fallback come from the control bus (hub-managed), with env defaults.
-// Ported from LifeOS's provider.ts; public signatures unchanged so call sites in
-// the apps don't change.
+// ── Unified AI provider cascade ───────────────────────────────────────────────
+// One ordered list of {provider, model} steps per tier (main/fast), walked top-to-
+// bottom at CALL TIME: the first step whose provider is configured is tried; on any
+// failure (API error, timeout, empty/refusal) the next step is tried; cross-provider
+// failover is automatic. The public surface below (AiProvider / resolveAiProvider /
+// generateStructured / generateText / modelName) is unchanged so call sites in the
+// apps don't change — the returned object is just a thin facade over the cascade.
 
-export type AiProviderKind = 'anthropic' | 'gemini'
+export type AiProviderKind = ProviderKind
 
 export interface StructuredRequest {
   prompt: string
@@ -40,239 +41,183 @@ export interface AiProvider {
   generateText(req: TextRequest): Promise<string | null>
 }
 
-// ── Request anonymization ─────────────────────────────────────────────────────
-// Gate on the hub-managed `anonymizeRequests` setting (default on). When enabled,
-// PII in the prompt+system is reversibly tokenized BEFORE the API call (using one
-// anonymizer instance so a value is consistent across both fields), and the
-// returned `Anonymizer` is used to restore originals in the model's response.
+type Tier = 'main' | 'fast'
+type Kind = 'structured' | 'text'
 
-function anonymizeReq<T extends { prompt: string; system?: string }>(
-  req: T,
-): { req: T; restore: Anonymizer | null } {
-  if (!readAiSettings().anonymizeRequests) return { req, restore: null }
-  const anon = createAnonymizer()
-  const masked: T = {
-    ...req,
-    prompt: anon.mask(req.prompt),
-    ...(req.system != null ? { system: anon.mask(req.system) } : {}),
+// Per-attempt deadline so a hung call falls through to the next step. Ollama gets a
+// wider budget for a possible cold model-load (mitigated by keep_alive pinning).
+const TIMEOUT_MS: Record<ProviderKind, number> = {
+  gemini: 60_000,
+  anthropic: 60_000,
+  ollama: 180_000,
+}
+
+function withTimeout<T>(fn: (signal: AbortSignal) => Promise<T>, ms: number): Promise<T> {
+  const ac = new AbortController()
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      ac.abort()
+      reject(new Error(`attempt timed out after ${ms}ms`))
+    }, ms)
+    fn(ac.signal).then(
+      (v) => {
+        clearTimeout(timer)
+        resolve(v)
+      },
+      (e) => {
+        clearTimeout(timer)
+        reject(e)
+      },
+    )
+  })
+}
+
+// Build the ordered, configured step list for a tier. An explicit `pref` provider
+// is stably hoisted to the front; `only` restricts to a single provider (used by
+// the historical single-provider `getProvider`).
+function buildSteps(tier: Tier, pref?: string | null, only?: ProviderKind): CascadeStep[] {
+  let steps = readAiSettings().cascades[tier].filter((s) => getAdapter(s.provider)?.configured())
+  if (only) steps = steps.filter((s) => s.provider === only)
+  if (pref) {
+    const p = pref as ProviderKind
+    steps = [...steps.filter((s) => s.provider === p), ...steps.filter((s) => s.provider !== p)]
   }
-  return { req: masked, restore: anon }
+  return steps
 }
 
-// ── Anthropic (Claude) ────────────────────────────────────────────────────────
+async function runCascade(
+  tier: Tier,
+  kind: Kind,
+  req: StructuredRequest | TextRequest,
+  pref: string | null | undefined,
+  onModel: (tier: Tier, model: string) => void,
+  only?: ProviderKind,
+): Promise<Record<string, unknown> | string | null> {
+  const settings = readAiSettings()
+  const steps = buildSteps(tier, pref, only)
+  if (steps.length === 0) return null
+  const logger = getLogger()
 
-const anthropicProvider: AiProvider = {
-  kind: 'anthropic',
-  label: 'Claude (Anthropic)',
-  configured: () => Boolean(keys.anthropicApiKey()),
-  modelName: (w) => {
-    const s = readAiSettings()
-    return w === 'fast' ? s.anthropicModelFast : s.anthropicModel
-  },
-  async generateStructured(reqIn) {
-    const { req, restore } = anonymizeReq(reqIn)
+  // Anonymize ONCE, reused across all cloud attempts. Local (Ollama) steps keep the
+  // original text — data never leaves the LAN, so masking would only cost fidelity.
+  const anon: Anonymizer | null = settings.anonymizeRequests ? createAnonymizer() : null
+  const maskedPrompt = anon ? anon.mask(req.prompt) : req.prompt
+  const maskedSystem = anon && req.system != null ? anon.mask(req.system) : req.system
+
+  for (let i = 0; i < steps.length; i++) {
+    const step = steps[i]
+    const adapter = getAdapter(step.provider)
+    const useMask = anon != null && !adapter.local
+    const willFallback = i < steps.length - 1
+    const prompt = useMask ? maskedPrompt : req.prompt
+    const system = useMask ? maskedSystem : req.system
+    const startedAt = Date.now()
     try {
-      const resp = await getAnthropic().messages.create({
-        model: this.modelName(req.model),
-        max_tokens: req.maxTokens ?? 2048,
-        ...(req.system ? { system: req.system } : {}),
-        tools: [
-          {
-            name: req.toolName,
-            description: req.toolDescription,
-            input_schema: req.jsonSchema as Anthropic.Tool.InputSchema,
-          },
-        ],
-        tool_choice: { type: 'tool', name: req.toolName },
-        messages: [{ role: 'user', content: req.prompt }],
-      })
-      const tu = resp.content.find((b) => b.type === 'tool_use')
-      if (!tu || tu.type !== 'tool_use') return null
-      const out = tu.input as Record<string, unknown>
-      return restore ? restore.unmaskDeep(out) : out
+      const out = await withTimeout<Record<string, unknown> | string | null>((signal) => {
+        if (kind === 'structured') {
+          const r = req as StructuredRequest
+          const attempt: StructuredAttempt = {
+            prompt,
+            system,
+            maxTokens: r.maxTokens,
+            toolName: r.toolName,
+            toolDescription: r.toolDescription,
+            jsonSchema: r.jsonSchema,
+          }
+          return adapter.callStructured(step.model, attempt, signal)
+        }
+        const attempt: AttemptRequest = { prompt, system, maxTokens: req.maxTokens }
+        return adapter.callText(step.model, attempt, signal)
+      }, TIMEOUT_MS[step.provider])
+
+      const ms = Date.now() - startedAt
+      if (out != null) {
+        onModel(tier, step.model)
+        logger.info(
+          { tier, kind, provider: step.provider, model: step.model, attempt: i + 1, ms },
+          '[ai/cascade] answered',
+        )
+        if (!useMask || !anon) return out
+        return kind === 'structured'
+          ? anon.unmaskDeep(out as Record<string, unknown>)
+          : anon.unmask(out as string)
+      }
+      logger.warn(
+        { tier, kind, provider: step.provider, model: step.model, attempt: i + 1, ms, reason: 'empty', willFallback },
+        '[ai/cascade] empty response',
+      )
     } catch (err) {
-      getLogger().warn({ err }, '[ai/anthropic] structured generation failed')
-      return null
-    }
-  },
-  async generateText(reqIn) {
-    const { req, restore } = anonymizeReq(reqIn)
-    try {
-      const resp = await getAnthropic().messages.create({
-        model: this.modelName(req.model),
-        max_tokens: req.maxTokens ?? 1024,
-        ...(req.system ? { system: req.system } : {}),
-        messages: [{ role: 'user', content: req.prompt }],
-      })
-      const text = resp.content
-        .filter((b): b is Anthropic.TextBlock => b.type === 'text')
-        .map((b) => b.text)
-        .join('')
-        .trim()
-      if (!text) return null
-      return restore ? restore.unmask(text) : text
-    } catch (err) {
-      getLogger().warn({ err }, '[ai/anthropic] text generation failed')
-      return null
-    }
-  },
-}
-
-// ── Gemini (Google) ───────────────────────────────────────────────────────────
-// Lazily required so apps that don't use Gemini need not install the optional peer.
-
-type GenAiModule = typeof import('@google/generative-ai')
-let genaiMod: GenAiModule | null = null
-let genaiClient: import('@google/generative-ai').GoogleGenerativeAI | null = null
-
-function genai(): import('@google/generative-ai').GoogleGenerativeAI | null {
-  if (!keys.geminiApiKey()) return null
-  if (!genaiMod) {
-    try {
-      // eslint-disable-next-line @typescript-eslint/no-var-requires
-      genaiMod = require('@google/generative-ai') as GenAiModule
-    } catch {
-      getLogger().warn({}, '[ai/gemini] @google/generative-ai not installed')
-      return null
+      logger.warn(
+        { err, tier, kind, provider: step.provider, model: step.model, attempt: i + 1, ms: Date.now() - startedAt, willFallback },
+        '[ai/cascade] attempt failed',
+      )
     }
   }
-  if (!genaiClient) genaiClient = new genaiMod.GoogleGenerativeAI(keys.geminiApiKey())
-  return genaiClient
+  logger.warn({ tier, kind, attempts: steps.length }, '[ai/cascade] all steps failed')
+  return null
 }
 
-// Failure cascade: try the configured primary + fallback first, then continue
-// down ALL known Gemini models (best → cheapest) so a model outage/quota/5xx on
-// one tier rolls down to the next instead of giving up. De-duplicated, order
-// preserved.
-function geminiModels(which?: 'main' | 'fast'): string[] {
-  const s = readAiSettings()
-  const primary = which === 'fast' ? s.geminiModelFast : s.geminiModel
-  return [
-    ...new Set([primary, s.geminiModelFallback, ...AI_MODELS.gemini].filter(Boolean) as string[]),
-  ]
-}
+// ── Facade ────────────────────────────────────────────────────────────────────
+// Implements the historical AiProvider surface over the cascade. `last` is scoped
+// to THIS facade instance (one per resolveAiProvider call), so modelName() reports
+// the model that actually answered — no shared global state.
 
-// gemini-2.5-pro cannot disable "thinking" (thinkingBudget:0 is rejected) and its
-// thinking consumes the output-token budget — so for pro we allow a bounded
-// thinking budget and widen maxOutputTokens to avoid truncation. flash/flash-lite
-// keep thinkingBudget:0 (fastest, no truncation).
-function geminiGenConfig(model: string, maxTokens: number, json: boolean): Record<string, unknown> {
-  const isPro = /pro/i.test(model)
+function makeProvider(pref: string | null | undefined, only?: ProviderKind): AiProvider {
+  const last: { main?: string; fast?: string } = {}
+  const onModel = (tier: Tier, model: string) => {
+    last[tier] = model
+  }
+  const firstStep = () => buildSteps('main', pref, only)[0] ?? buildSteps('fast', pref, only)[0]
+
   return {
-    ...(json ? { responseMimeType: 'application/json' } : {}),
-    maxOutputTokens: isPro ? Math.max(maxTokens, 4096) : maxTokens,
-    thinkingConfig: { thinkingBudget: isPro ? 1024 : 0 },
+    get kind(): AiProviderKind {
+      return only ?? firstStep()?.provider ?? 'anthropic'
+    },
+    get label(): string {
+      const k = only ?? firstStep()?.provider
+      return k ? getAdapter(k).label : 'AI'
+    },
+    configured() {
+      return buildSteps('main', pref, only).length > 0 || buildSteps('fast', pref, only).length > 0
+    },
+    modelName(which: Tier = 'main') {
+      return last[which] ?? buildSteps(which, pref, only)[0]?.model ?? ''
+    },
+    async generateStructured(req: StructuredRequest) {
+      return (await runCascade(req.model ?? 'main', 'structured', req, pref, onModel, only)) as
+        | Record<string, unknown>
+        | null
+    },
+    async generateText(req: TextRequest) {
+      return (await runCascade(req.model ?? 'main', 'text', req, pref, onModel, only)) as string | null
+    },
   }
 }
 
-const geminiLastModel: { main?: string; fast?: string } = {}
+// ── Public selection API (unchanged signatures) ───────────────────────────────
 
-function parseJsonObject(text: string): Record<string, unknown> | null {
-  const trimmed = text.trim()
-  const match = trimmed.match(/\{[\s\S]*\}/)
-  try {
-    return JSON.parse(match ? match[0] : trimmed) as Record<string, unknown>
-  } catch {
-    return null
-  }
-}
+export const AI_PROVIDERS: ReadonlyArray<{ kind: AiProviderKind; label: string }> = (
+  ['gemini', 'anthropic', 'ollama'] as const
+).map((k) => ({ kind: k, label: ADAPTERS[k].label }))
 
-const geminiProvider: AiProvider = {
-  kind: 'gemini',
-  label: 'Gemini (Google)',
-  configured: () => Boolean(keys.geminiApiKey()),
-  modelName: (w) => {
-    const which = w === 'fast' ? 'fast' : 'main'
-    const s = readAiSettings()
-    return geminiLastModel[which] ?? (which === 'fast' ? s.geminiModelFast : s.geminiModel)
-  },
-  async generateStructured(reqIn) {
-    const { req, restore } = anonymizeReq(reqIn)
-    const which = req.model === 'fast' ? 'fast' : 'main'
-    const client = genai()
-    if (!client) return null
-    const models = geminiModels(req.model)
-    const prompt = `${req.prompt}\n\nReturn ONLY a JSON object conforming to this JSON Schema (no markdown, no commentary):\n${JSON.stringify(req.jsonSchema)}`
-    for (let i = 0; i < models.length; i++) {
-      const m = models[i]
-      try {
-        const model = client.getGenerativeModel({
-          model: m,
-          ...(req.system ? { systemInstruction: req.system } : {}),
-          // Cast: this SDK version's GenerationConfig type doesn't include thinkingConfig.
-          generationConfig: geminiGenConfig(m, req.maxTokens ?? 2048, true) as any,
-        })
-        const resp = await model.generateContent(prompt)
-        geminiLastModel[which] = m
-        const out = parseJsonObject(resp.response.text())
-        return out && restore ? restore.unmaskDeep(out) : out
-      } catch (err) {
-        const willFallback = i < models.length - 1
-        getLogger().warn({ err, model: m, willFallback }, '[ai/gemini] structured generation failed')
-        if (!willFallback) return null
-      }
-    }
-    return null
-  },
-  async generateText(reqIn) {
-    const { req, restore } = anonymizeReq(reqIn)
-    const which = req.model === 'fast' ? 'fast' : 'main'
-    const client = genai()
-    if (!client) return null
-    const models = geminiModels(req.model)
-    for (let i = 0; i < models.length; i++) {
-      const m = models[i]
-      try {
-        const model = client.getGenerativeModel({
-          model: m,
-          ...(req.system ? { systemInstruction: req.system } : {}),
-          // Cast: see note in generateStructured.
-          generationConfig: geminiGenConfig(m, req.maxTokens ?? 1024, false) as any,
-        })
-        const resp = await model.generateContent(req.prompt)
-        geminiLastModel[which] = m
-        const text = resp.response.text().trim() || null
-        return text && restore ? restore.unmask(text) : text
-      } catch (err) {
-        const willFallback = i < models.length - 1
-        getLogger().warn({ err, model: m, willFallback }, '[ai/gemini] text generation failed')
-        if (!willFallback) return null
-      }
-    }
-    return null
-  },
-}
-
-// ── Selection ─────────────────────────────────────────────────────────────────
-
-export const AI_PROVIDERS: ReadonlyArray<{ kind: AiProviderKind; label: string }> = [
-  { kind: 'anthropic', label: anthropicProvider.label },
-  { kind: 'gemini', label: geminiProvider.label },
-]
-
+/** A single-provider view over the cascade (only that provider's steps). */
 export function getProvider(kind: AiProviderKind): AiProvider {
-  return kind === 'gemini' ? geminiProvider : anthropicProvider
+  return makeProvider(null, kind)
 }
 
 export function anyAiConfigured(): boolean {
-  return anthropicProvider.configured() || geminiProvider.configured()
+  return Object.values(ADAPTERS).some((a) => a.configured())
 }
 
 /**
- * Resolve which provider to use. An explicit `pref` (e.g. LifeOS's per-user
- * synthesisProvider) wins; otherwise the hub-managed control-bus provider is used.
- * Falls back to the other configured provider when `fallbackEnabled`; returns null
- * if neither is configured (callers then use deterministic non-AI fallbacks).
+ * Resolve the AI provider facade for this request. An explicit `pref` (e.g.
+ * LifeOS's per-user synthesisProvider) is stably hoisted to the front of the
+ * cascade; otherwise the hub-managed cascade order is used as-is. Returns null only
+ * when NO step in either tier is configured (callers then use deterministic
+ * non-AI fallbacks). Note: with a local Ollama endpoint configured, there is
+ * effectively always a last-resort step, so null is rare.
  */
 export function resolveAiProvider(pref?: string | null): AiProvider | null {
-  const settings = readAiSettings()
-  const want: AiProviderKind = (pref as AiProviderKind) || settings.provider
-  const order: AiProviderKind[] =
-    want === 'gemini' ? ['gemini', 'anthropic'] : ['anthropic', 'gemini']
-  const candidates = settings.fallbackEnabled ? order : [order[0]]
-  for (const k of candidates) {
-    const p = getProvider(k)
-    if (p.configured()) return p
-  }
-  return null
+  const p = makeProvider(pref)
+  return p.configured() ? p : null
 }

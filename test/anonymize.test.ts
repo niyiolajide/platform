@@ -88,4 +88,13 @@ describe('createAnonymizer', () => {
     )
     expect(a.hasMappings()).toBe(false)
   })
+
+  it('restores placeholders even when the model drifts case or separator', () => {
+    const a = createAnonymizer()
+    const masked = a.mask('Reach jane@x.com now') // → [EMAIL_1]
+    expect(masked).toContain('[EMAIL_1]')
+    // Model echoes the token lowercased / with a space instead of underscore.
+    expect(a.unmask('contact [email_1]')).toBe('contact jane@x.com')
+    expect(a.unmask('contact [EMAIL 1]')).toBe('contact jane@x.com')
+  })
 })

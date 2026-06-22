@@ -17,6 +17,8 @@
 // brands/orgs (e.g. "Capital One", "GEICO") as people. Maintenance = add a person
 // to KNOWN_NAMES when a new contact starts showing up in the data.
 
+import { getLogger } from '../config'
+
 export type PiiCategory =
   | 'EMAIL'
   | 'PHONE'
@@ -26,6 +28,12 @@ export type PiiCategory =
   | 'IP'
   | 'ADDRESS'
   | 'PERSON'
+
+const PII_CATEGORIES = 'EMAIL|PHONE|SSN|CARD|IBAN|IP|ADDRESS|PERSON'
+// Tolerant of case + an underscore-or-space separator (model drift on restore).
+const TOKEN_RE = new RegExp(`\\[\\s*(${PII_CATEGORIES})\\s*[_ ]\\s*(\\d+)\\s*\\]`, 'gi')
+// Strict canonical shape — used to detect tokens left unrestored after unmask.
+const CANONICAL_TOKEN_RE = new RegExp(`\\[(?:${PII_CATEGORIES})_\\d+\\]`, 'gi')
 
 interface Detector {
   category: PiiCategory
@@ -168,9 +176,24 @@ export function createAnonymizer(): Anonymizer {
 
   function unmask(text: string): string {
     if (!text || tokenToOriginal.size === 0) return text
-    return text.replace(/\[(?:EMAIL|PHONE|SSN|CARD|IBAN|IP|ADDRESS|PERSON)_\d+\]/g, (tok) =>
-      tokenToOriginal.has(tok) ? (tokenToOriginal.get(tok) as string) : tok,
-    )
+    // Tolerant restore: models sometimes echo a placeholder with different case or
+    // a space instead of the underscore (e.g. "[person 1]"). Normalize to the
+    // canonical token before lookup so PII is still reliably restored.
+    const restored = text.replace(TOKEN_RE, (full, cat: string, num: string) => {
+      const v = tokenToOriginal.get(`[${cat.toUpperCase()}_${num}]`)
+      return v != null ? v : full
+    })
+    // Any placeholder-shaped string still present = a token the model invented or
+    // mangled beyond recovery → a potential leak. Surface it rather than silently
+    // shipping "[PERSON_2]" into a user-facing digest.
+    const leftover = restored.match(CANONICAL_TOKEN_RE)
+    if (leftover) {
+      getLogger().warn(
+        { leftover: [...new Set(leftover)] },
+        '[ai/anonymize] unrestored PII placeholder(s) in model output',
+      )
+    }
+    return restored
   }
 
   function unmaskDeep<T>(value: T): T {

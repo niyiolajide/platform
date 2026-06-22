@@ -1,4 +1,5 @@
-export type AiProviderKind = 'anthropic' | 'gemini';
+import type { ProviderKind } from '../control/schema';
+export type AiProviderKind = ProviderKind;
 export interface StructuredRequest {
     prompt: string;
     system?: string;
@@ -26,12 +27,15 @@ export declare const AI_PROVIDERS: ReadonlyArray<{
     kind: AiProviderKind;
     label: string;
 }>;
+/** A single-provider view over the cascade (only that provider's steps). */
 export declare function getProvider(kind: AiProviderKind): AiProvider;
 export declare function anyAiConfigured(): boolean;
 /**
- * Resolve which provider to use. An explicit `pref` (e.g. LifeOS's per-user
- * synthesisProvider) wins; otherwise the hub-managed control-bus provider is used.
- * Falls back to the other configured provider when `fallbackEnabled`; returns null
- * if neither is configured (callers then use deterministic non-AI fallbacks).
+ * Resolve the AI provider facade for this request. An explicit `pref` (e.g.
+ * LifeOS's per-user synthesisProvider) is stably hoisted to the front of the
+ * cascade; otherwise the hub-managed cascade order is used as-is. Returns null only
+ * when NO step in either tier is configured (callers then use deterministic
+ * non-AI fallbacks). Note: with a local Ollama endpoint configured, there is
+ * effectively always a last-resort step, so null is rare.
  */
 export declare function resolveAiProvider(pref?: string | null): AiProvider | null;

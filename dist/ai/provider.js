@@ -6,236 +6,149 @@ exports.anyAiConfigured = anyAiConfigured;
 exports.resolveAiProvider = resolveAiProvider;
 const config_1 = require("../config");
 const store_1 = require("../control/store");
-const anthropic_1 = require("./anthropic");
 const anonymize_1 = require("./anonymize");
-const models_1 = require("./models");
-// ── Request anonymization ─────────────────────────────────────────────────────
-// Gate on the hub-managed `anonymizeRequests` setting (default on). When enabled,
-// PII in the prompt+system is reversibly tokenized BEFORE the API call (using one
-// anonymizer instance so a value is consistent across both fields), and the
-// returned `Anonymizer` is used to restore originals in the model's response.
-function anonymizeReq(req) {
-    if (!(0, store_1.readAiSettings)().anonymizeRequests)
-        return { req, restore: null };
-    const anon = (0, anonymize_1.createAnonymizer)();
-    const masked = {
-        ...req,
-        prompt: anon.mask(req.prompt),
-        ...(req.system != null ? { system: anon.mask(req.system) } : {}),
-    };
-    return { req: masked, restore: anon };
-}
-// ── Anthropic (Claude) ────────────────────────────────────────────────────────
-const anthropicProvider = {
-    kind: 'anthropic',
-    label: 'Claude (Anthropic)',
-    configured: () => Boolean(config_1.keys.anthropicApiKey()),
-    modelName: (w) => {
-        const s = (0, store_1.readAiSettings)();
-        return w === 'fast' ? s.anthropicModelFast : s.anthropicModel;
-    },
-    async generateStructured(reqIn) {
-        const { req, restore } = anonymizeReq(reqIn);
-        try {
-            const resp = await (0, anthropic_1.getAnthropic)().messages.create({
-                model: this.modelName(req.model),
-                max_tokens: req.maxTokens ?? 2048,
-                ...(req.system ? { system: req.system } : {}),
-                tools: [
-                    {
-                        name: req.toolName,
-                        description: req.toolDescription,
-                        input_schema: req.jsonSchema,
-                    },
-                ],
-                tool_choice: { type: 'tool', name: req.toolName },
-                messages: [{ role: 'user', content: req.prompt }],
-            });
-            const tu = resp.content.find((b) => b.type === 'tool_use');
-            if (!tu || tu.type !== 'tool_use')
-                return null;
-            const out = tu.input;
-            return restore ? restore.unmaskDeep(out) : out;
-        }
-        catch (err) {
-            (0, config_1.getLogger)().warn({ err }, '[ai/anthropic] structured generation failed');
-            return null;
-        }
-    },
-    async generateText(reqIn) {
-        const { req, restore } = anonymizeReq(reqIn);
-        try {
-            const resp = await (0, anthropic_1.getAnthropic)().messages.create({
-                model: this.modelName(req.model),
-                max_tokens: req.maxTokens ?? 1024,
-                ...(req.system ? { system: req.system } : {}),
-                messages: [{ role: 'user', content: req.prompt }],
-            });
-            const text = resp.content
-                .filter((b) => b.type === 'text')
-                .map((b) => b.text)
-                .join('')
-                .trim();
-            if (!text)
-                return null;
-            return restore ? restore.unmask(text) : text;
-        }
-        catch (err) {
-            (0, config_1.getLogger)().warn({ err }, '[ai/anthropic] text generation failed');
-            return null;
-        }
-    },
+const registry_1 = require("./registry");
+// Per-attempt deadline so a hung call falls through to the next step. Ollama gets a
+// wider budget for a possible cold model-load (mitigated by keep_alive pinning).
+const TIMEOUT_MS = {
+    gemini: 60000,
+    anthropic: 60000,
+    ollama: 180000,
 };
-let genaiMod = null;
-let genaiClient = null;
-function genai() {
-    if (!config_1.keys.geminiApiKey())
+function withTimeout(fn, ms) {
+    const ac = new AbortController();
+    return new Promise((resolve, reject) => {
+        const timer = setTimeout(() => {
+            ac.abort();
+            reject(new Error(`attempt timed out after ${ms}ms`));
+        }, ms);
+        fn(ac.signal).then((v) => {
+            clearTimeout(timer);
+            resolve(v);
+        }, (e) => {
+            clearTimeout(timer);
+            reject(e);
+        });
+    });
+}
+// Build the ordered, configured step list for a tier. An explicit `pref` provider
+// is stably hoisted to the front; `only` restricts to a single provider (used by
+// the historical single-provider `getProvider`).
+function buildSteps(tier, pref, only) {
+    let steps = (0, store_1.readAiSettings)().cascades[tier].filter((s) => (0, registry_1.getAdapter)(s.provider)?.configured());
+    if (only)
+        steps = steps.filter((s) => s.provider === only);
+    if (pref) {
+        const p = pref;
+        steps = [...steps.filter((s) => s.provider === p), ...steps.filter((s) => s.provider !== p)];
+    }
+    return steps;
+}
+async function runCascade(tier, kind, req, pref, onModel, only) {
+    const settings = (0, store_1.readAiSettings)();
+    const steps = buildSteps(tier, pref, only);
+    if (steps.length === 0)
         return null;
-    if (!genaiMod) {
+    const logger = (0, config_1.getLogger)();
+    // Anonymize ONCE, reused across all cloud attempts. Local (Ollama) steps keep the
+    // original text — data never leaves the LAN, so masking would only cost fidelity.
+    const anon = settings.anonymizeRequests ? (0, anonymize_1.createAnonymizer)() : null;
+    const maskedPrompt = anon ? anon.mask(req.prompt) : req.prompt;
+    const maskedSystem = anon && req.system != null ? anon.mask(req.system) : req.system;
+    for (let i = 0; i < steps.length; i++) {
+        const step = steps[i];
+        const adapter = (0, registry_1.getAdapter)(step.provider);
+        const useMask = anon != null && !adapter.local;
+        const willFallback = i < steps.length - 1;
+        const prompt = useMask ? maskedPrompt : req.prompt;
+        const system = useMask ? maskedSystem : req.system;
+        const startedAt = Date.now();
         try {
-            // eslint-disable-next-line @typescript-eslint/no-var-requires
-            genaiMod = require('@google/generative-ai');
+            const out = await withTimeout((signal) => {
+                if (kind === 'structured') {
+                    const r = req;
+                    const attempt = {
+                        prompt,
+                        system,
+                        maxTokens: r.maxTokens,
+                        toolName: r.toolName,
+                        toolDescription: r.toolDescription,
+                        jsonSchema: r.jsonSchema,
+                    };
+                    return adapter.callStructured(step.model, attempt, signal);
+                }
+                const attempt = { prompt, system, maxTokens: req.maxTokens };
+                return adapter.callText(step.model, attempt, signal);
+            }, TIMEOUT_MS[step.provider]);
+            const ms = Date.now() - startedAt;
+            if (out != null) {
+                onModel(tier, step.model);
+                logger.info({ tier, kind, provider: step.provider, model: step.model, attempt: i + 1, ms }, '[ai/cascade] answered');
+                if (!useMask || !anon)
+                    return out;
+                return kind === 'structured'
+                    ? anon.unmaskDeep(out)
+                    : anon.unmask(out);
+            }
+            logger.warn({ tier, kind, provider: step.provider, model: step.model, attempt: i + 1, ms, reason: 'empty', willFallback }, '[ai/cascade] empty response');
         }
-        catch {
-            (0, config_1.getLogger)().warn({}, '[ai/gemini] @google/generative-ai not installed');
-            return null;
+        catch (err) {
+            logger.warn({ err, tier, kind, provider: step.provider, model: step.model, attempt: i + 1, ms: Date.now() - startedAt, willFallback }, '[ai/cascade] attempt failed');
         }
     }
-    if (!genaiClient)
-        genaiClient = new genaiMod.GoogleGenerativeAI(config_1.keys.geminiApiKey());
-    return genaiClient;
+    logger.warn({ tier, kind, attempts: steps.length }, '[ai/cascade] all steps failed');
+    return null;
 }
-// Failure cascade: try the configured primary + fallback first, then continue
-// down ALL known Gemini models (best → cheapest) so a model outage/quota/5xx on
-// one tier rolls down to the next instead of giving up. De-duplicated, order
-// preserved.
-function geminiModels(which) {
-    const s = (0, store_1.readAiSettings)();
-    const primary = which === 'fast' ? s.geminiModelFast : s.geminiModel;
-    return [
-        ...new Set([primary, s.geminiModelFallback, ...models_1.AI_MODELS.gemini].filter(Boolean)),
-    ];
-}
-// gemini-2.5-pro cannot disable "thinking" (thinkingBudget:0 is rejected) and its
-// thinking consumes the output-token budget — so for pro we allow a bounded
-// thinking budget and widen maxOutputTokens to avoid truncation. flash/flash-lite
-// keep thinkingBudget:0 (fastest, no truncation).
-function geminiGenConfig(model, maxTokens, json) {
-    const isPro = /pro/i.test(model);
+// ── Facade ────────────────────────────────────────────────────────────────────
+// Implements the historical AiProvider surface over the cascade. `last` is scoped
+// to THIS facade instance (one per resolveAiProvider call), so modelName() reports
+// the model that actually answered — no shared global state.
+function makeProvider(pref, only) {
+    const last = {};
+    const onModel = (tier, model) => {
+        last[tier] = model;
+    };
+    const firstStep = () => buildSteps('main', pref, only)[0] ?? buildSteps('fast', pref, only)[0];
     return {
-        ...(json ? { responseMimeType: 'application/json' } : {}),
-        maxOutputTokens: isPro ? Math.max(maxTokens, 4096) : maxTokens,
-        thinkingConfig: { thinkingBudget: isPro ? 1024 : 0 },
+        get kind() {
+            return only ?? firstStep()?.provider ?? 'anthropic';
+        },
+        get label() {
+            const k = only ?? firstStep()?.provider;
+            return k ? (0, registry_1.getAdapter)(k).label : 'AI';
+        },
+        configured() {
+            return buildSteps('main', pref, only).length > 0 || buildSteps('fast', pref, only).length > 0;
+        },
+        modelName(which = 'main') {
+            return last[which] ?? buildSteps(which, pref, only)[0]?.model ?? '';
+        },
+        async generateStructured(req) {
+            return (await runCascade(req.model ?? 'main', 'structured', req, pref, onModel, only));
+        },
+        async generateText(req) {
+            return (await runCascade(req.model ?? 'main', 'text', req, pref, onModel, only));
+        },
     };
 }
-const geminiLastModel = {};
-function parseJsonObject(text) {
-    const trimmed = text.trim();
-    const match = trimmed.match(/\{[\s\S]*\}/);
-    try {
-        return JSON.parse(match ? match[0] : trimmed);
-    }
-    catch {
-        return null;
-    }
-}
-const geminiProvider = {
-    kind: 'gemini',
-    label: 'Gemini (Google)',
-    configured: () => Boolean(config_1.keys.geminiApiKey()),
-    modelName: (w) => {
-        const which = w === 'fast' ? 'fast' : 'main';
-        const s = (0, store_1.readAiSettings)();
-        return geminiLastModel[which] ?? (which === 'fast' ? s.geminiModelFast : s.geminiModel);
-    },
-    async generateStructured(reqIn) {
-        const { req, restore } = anonymizeReq(reqIn);
-        const which = req.model === 'fast' ? 'fast' : 'main';
-        const client = genai();
-        if (!client)
-            return null;
-        const models = geminiModels(req.model);
-        const prompt = `${req.prompt}\n\nReturn ONLY a JSON object conforming to this JSON Schema (no markdown, no commentary):\n${JSON.stringify(req.jsonSchema)}`;
-        for (let i = 0; i < models.length; i++) {
-            const m = models[i];
-            try {
-                const model = client.getGenerativeModel({
-                    model: m,
-                    ...(req.system ? { systemInstruction: req.system } : {}),
-                    // Cast: this SDK version's GenerationConfig type doesn't include thinkingConfig.
-                    generationConfig: geminiGenConfig(m, req.maxTokens ?? 2048, true),
-                });
-                const resp = await model.generateContent(prompt);
-                geminiLastModel[which] = m;
-                const out = parseJsonObject(resp.response.text());
-                return out && restore ? restore.unmaskDeep(out) : out;
-            }
-            catch (err) {
-                const willFallback = i < models.length - 1;
-                (0, config_1.getLogger)().warn({ err, model: m, willFallback }, '[ai/gemini] structured generation failed');
-                if (!willFallback)
-                    return null;
-            }
-        }
-        return null;
-    },
-    async generateText(reqIn) {
-        const { req, restore } = anonymizeReq(reqIn);
-        const which = req.model === 'fast' ? 'fast' : 'main';
-        const client = genai();
-        if (!client)
-            return null;
-        const models = geminiModels(req.model);
-        for (let i = 0; i < models.length; i++) {
-            const m = models[i];
-            try {
-                const model = client.getGenerativeModel({
-                    model: m,
-                    ...(req.system ? { systemInstruction: req.system } : {}),
-                    // Cast: see note in generateStructured.
-                    generationConfig: geminiGenConfig(m, req.maxTokens ?? 1024, false),
-                });
-                const resp = await model.generateContent(req.prompt);
-                geminiLastModel[which] = m;
-                const text = resp.response.text().trim() || null;
-                return text && restore ? restore.unmask(text) : text;
-            }
-            catch (err) {
-                const willFallback = i < models.length - 1;
-                (0, config_1.getLogger)().warn({ err, model: m, willFallback }, '[ai/gemini] text generation failed');
-                if (!willFallback)
-                    return null;
-            }
-        }
-        return null;
-    },
-};
-// ── Selection ─────────────────────────────────────────────────────────────────
-exports.AI_PROVIDERS = [
-    { kind: 'anthropic', label: anthropicProvider.label },
-    { kind: 'gemini', label: geminiProvider.label },
-];
+// ── Public selection API (unchanged signatures) ───────────────────────────────
+exports.AI_PROVIDERS = ['gemini', 'anthropic', 'ollama'].map((k) => ({ kind: k, label: registry_1.ADAPTERS[k].label }));
+/** A single-provider view over the cascade (only that provider's steps). */
 function getProvider(kind) {
-    return kind === 'gemini' ? geminiProvider : anthropicProvider;
+    return makeProvider(null, kind);
 }
 function anyAiConfigured() {
-    return anthropicProvider.configured() || geminiProvider.configured();
+    return Object.values(registry_1.ADAPTERS).some((a) => a.configured());
 }
 /**
- * Resolve which provider to use. An explicit `pref` (e.g. LifeOS's per-user
- * synthesisProvider) wins; otherwise the hub-managed control-bus provider is used.
- * Falls back to the other configured provider when `fallbackEnabled`; returns null
- * if neither is configured (callers then use deterministic non-AI fallbacks).
+ * Resolve the AI provider facade for this request. An explicit `pref` (e.g.
+ * LifeOS's per-user synthesisProvider) is stably hoisted to the front of the
+ * cascade; otherwise the hub-managed cascade order is used as-is. Returns null only
+ * when NO step in either tier is configured (callers then use deterministic
+ * non-AI fallbacks). Note: with a local Ollama endpoint configured, there is
+ * effectively always a last-resort step, so null is rare.
  */
 function resolveAiProvider(pref) {
-    const settings = (0, store_1.readAiSettings)();
-    const want = pref || settings.provider;
-    const order = want === 'gemini' ? ['gemini', 'anthropic'] : ['anthropic', 'gemini'];
-    const candidates = settings.fallbackEnabled ? order : [order[0]];
-    for (const k of candidates) {
-        const p = getProvider(k);
-        if (p.configured())
-            return p;
-    }
-    return null;
+    const p = makeProvider(pref);
+    return p.configured() ? p : null;
 }
