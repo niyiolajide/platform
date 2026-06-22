@@ -39,3 +39,12 @@ export declare function anyAiConfigured(): boolean;
  * effectively always a last-resort step, so null is rare.
  */
 export declare function resolveAiProvider(pref?: string | null): AiProvider | null;
+/**
+ * One-shot health/latency probe of a specific {provider, model} — backs the Hub's
+ * per-step "Test" button. Sends a tiny text request and reports ok + round-trip ms.
+ */
+export declare function probeModel(provider: ProviderKind, model: string, timeoutMs?: number): Promise<{
+    ok: boolean;
+    ms: number;
+    error?: string;
+}>;

@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.createAnonymizer = exports.AI_MODELS = exports.aiConfigSource = exports.readAiSettings = exports.AI_SETTINGS_SCHEMA = exports.resolveAiProvider = exports.anyAiConfigured = exports.getProvider = exports.AI_PROVIDERS = exports._resetAnthropic = exports.isAnthropicConfigured = exports.getAnthropic = void 0;
+exports.createAnonymizer = exports.AI_MODELS = exports.aiConfigSource = exports.readAiSettings = exports.AI_SETTINGS_SCHEMA = exports.probeModel = exports.resolveAiProvider = exports.anyAiConfigured = exports.getProvider = exports.AI_PROVIDERS = exports._resetAnthropic = exports.isAnthropicConfigured = exports.getAnthropic = void 0;
 var anthropic_1 = require("./anthropic");
 Object.defineProperty(exports, "getAnthropic", { enumerable: true, get: function () { return anthropic_1.getAnthropic; } });
 Object.defineProperty(exports, "isAnthropicConfigured", { enumerable: true, get: function () { return anthropic_1.isAnthropicConfigured; } });
@@ -10,6 +10,7 @@ Object.defineProperty(exports, "AI_PROVIDERS", { enumerable: true, get: function
 Object.defineProperty(exports, "getProvider", { enumerable: true, get: function () { return provider_1.getProvider; } });
 Object.defineProperty(exports, "anyAiConfigured", { enumerable: true, get: function () { return provider_1.anyAiConfigured; } });
 Object.defineProperty(exports, "resolveAiProvider", { enumerable: true, get: function () { return provider_1.resolveAiProvider; } });
+Object.defineProperty(exports, "probeModel", { enumerable: true, get: function () { return provider_1.probeModel; } });
 // Convenience re-exports so an app can `import { resolveAiProvider, AI_MODELS } from '@niyi/platform/ai'`
 var schema_1 = require("../control/schema");
 Object.defineProperty(exports, "AI_SETTINGS_SCHEMA", { enumerable: true, get: function () { return schema_1.AI_SETTINGS_SCHEMA; } });

@@ -4,6 +4,7 @@ exports.AI_PROVIDERS = void 0;
 exports.getProvider = getProvider;
 exports.anyAiConfigured = anyAiConfigured;
 exports.resolveAiProvider = resolveAiProvider;
+exports.probeModel = probeModel;
 const config_1 = require("../config");
 const store_1 = require("../control/store");
 const anonymize_1 = require("./anonymize");
@@ -151,4 +152,24 @@ function anyAiConfigured() {
 function resolveAiProvider(pref) {
     const p = makeProvider(pref);
     return p.configured() ? p : null;
+}
+/**
+ * One-shot health/latency probe of a specific {provider, model} — backs the Hub's
+ * per-step "Test" button. Sends a tiny text request and reports ok + round-trip ms.
+ */
+async function probeModel(provider, model, timeoutMs = 20000) {
+    const adapter = (0, registry_1.getAdapter)(provider);
+    if (!adapter)
+        return { ok: false, ms: 0, error: `unknown provider '${provider}'` };
+    if (!adapter.configured())
+        return { ok: false, ms: 0, error: 'not configured (missing key/endpoint)' };
+    const start = Date.now();
+    try {
+        const out = await withTimeout((signal) => adapter.callText(model, { prompt: 'Reply with exactly one word: ok', maxTokens: 8 }, signal), timeoutMs);
+        const ms = Date.now() - start;
+        return out != null ? { ok: true, ms } : { ok: false, ms, error: 'empty response' };
+    }
+    catch (e) {
+        return { ok: false, ms: Date.now() - start, error: e instanceof Error ? e.message : String(e) };
+    }
 }

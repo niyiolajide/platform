@@ -8,6 +8,7 @@ export {
   getProvider,
   anyAiConfigured,
   resolveAiProvider,
+  probeModel,
 } from './provider'
 // Convenience re-exports so an app can `import { resolveAiProvider, AI_MODELS } from '@niyi/platform/ai'`
 export { AI_SETTINGS_SCHEMA, type AiSettings } from '../control/schema'
