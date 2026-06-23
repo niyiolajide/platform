@@ -119,6 +119,8 @@ export declare const AI_SETTINGS_SCHEMA: z.ZodObject<{
         keepAlive?: string | number | undefined;
     }>>;
     anonymizeRequests: z.ZodDefault<z.ZodBoolean>;
+    maskNames: z.ZodDefault<z.ZodArray<z.ZodString, "many">>;
+    notPersonNames: z.ZodDefault<z.ZodArray<z.ZodString, "many">>;
     logAiCalls: z.ZodDefault<z.ZodBoolean>;
     logPayloads: z.ZodDefault<z.ZodBoolean>;
     aiLogRetentionDays: z.ZodDefault<z.ZodNumber>;
@@ -148,6 +150,8 @@ export declare const AI_SETTINGS_SCHEMA: z.ZodObject<{
         }[];
     };
     anonymizeRequests: boolean;
+    maskNames: string[];
+    notPersonNames: string[];
     logAiCalls: boolean;
     logPayloads: boolean;
     aiLogRetentionDays: number;
@@ -176,6 +180,8 @@ export declare const AI_SETTINGS_SCHEMA: z.ZodObject<{
         }[] | undefined;
     } | undefined;
     anonymizeRequests?: boolean | undefined;
+    maskNames?: string[] | undefined;
+    notPersonNames?: string[] | undefined;
     logAiCalls?: boolean | undefined;
     logPayloads?: boolean | undefined;
     aiLogRetentionDays?: number | undefined;

@@ -62,6 +62,12 @@ exports.AI_SETTINGS_SCHEMA = zod_1.z.object({
     // restore it in the response. On by default. Monetary amounts are never masked.
     // (Local Ollama steps skip masking — data never leaves the LAN.)
     anonymizeRequests: zod_1.z.boolean().default(true),
+    // Runtime PII name lists (hub-managed via the AI Logs triage UI; read offline by
+    // the anonymizer). `maskNames`: extra person names to mask, UNION the lib's built-in
+    // seed. `notPersonNames`: Title-Case runs to NOT flag as possible names (warner
+    // deny-list). Both default empty → behavior identical to the seed-only allow-list.
+    maskNames: zod_1.z.array(zod_1.z.string()).default([]),
+    notPersonNames: zod_1.z.array(zod_1.z.string()).default([]),
     // ── AI-call telemetry / logging (hub-managed) ───────────────────────────────
     // When on, runCascade emits an AiCallRecord per attempt to the configured
     // telemetry sink (no-op if unconfigured). When `logPayloads` is on, the record
