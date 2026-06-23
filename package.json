@@ -1,7 +1,7 @@
 {
   "name": "@niyi/platform",
-  "version": "0.1.0",
-  "description": "Shared control-plane library for the sibling apps: AI providers, notifications, and the control-bundle file-bus.",
+  "version": "0.2.0",
+  "description": "Shared control-plane library for the sibling apps: AI providers, notifications, the control-bundle file-bus, and the edge auth gate.",
   "license": "UNLICENSED",
   "repository": "github:niyiolajide/platform",
   "main": "./dist/index.js",
@@ -10,7 +10,8 @@
     ".": { "types": "./dist/index.d.ts", "default": "./dist/index.js" },
     "./ai": { "types": "./dist/ai/index.d.ts", "default": "./dist/ai/index.js" },
     "./notify": { "types": "./dist/notify/index.d.ts", "default": "./dist/notify/index.js" },
-    "./control": { "types": "./dist/control/index.d.ts", "default": "./dist/control/index.js" }
+    "./control": { "types": "./dist/control/index.d.ts", "default": "./dist/control/index.js" },
+    "./edge": { "types": "./dist/edge/index.d.ts", "default": "./dist/edge/index.js" }
   },
   "files": ["dist", "src"],
   "scripts": {
@@ -24,14 +25,17 @@
   },
   "peerDependencies": {
     "@anthropic-ai/sdk": ">=0.30.0",
-    "@google/generative-ai": ">=0.20.0"
+    "@google/generative-ai": ">=0.20.0",
+    "next": ">=14"
   },
   "peerDependenciesMeta": {
-    "@google/generative-ai": { "optional": true }
+    "@google/generative-ai": { "optional": true },
+    "next": { "optional": true }
   },
   "devDependencies": {
     "@anthropic-ai/sdk": "^0.36.0",
     "@google/generative-ai": "^0.21.0",
+    "next": "^14.1.0",
     "typescript": "^5.6.0",
     "vitest": "^2.1.0"
   }
