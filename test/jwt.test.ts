@@ -3,7 +3,7 @@ import crypto from 'crypto'
 import fs from 'fs'
 import os from 'os'
 import path from 'path'
-import { verifyHubToken } from '../src/control/jwt'
+import { verifyPulseToken } from '../src/control/jwt'
 import { revokeJti, _clearCache } from '../src/control'
 
 const SECRET = 'test-shared-secret-at-least-32-characters-long'
@@ -45,89 +45,89 @@ beforeEach(() => {
   dir = fs.mkdtempSync(path.join(os.tmpdir(), 'jwt-'))
   process.env.CONTROL_DIR = dir
   process.env.SHARED_JWT_SECRET = SECRET
-  process.env.HUB_TOKEN_PUBLIC_KEYS = JSON.stringify([
+  process.env.PULSE_TOKEN_PUBLIC_KEYS = JSON.stringify([
     { kid: KID, pem: Buffer.from(PUB_PEM).toString('base64') },
   ])
   _clearCache()
 })
 afterEach(() => {
   fs.rmSync(dir, { recursive: true, force: true })
-  delete process.env.HUB_TOKEN_PUBLIC_KEYS
+  delete process.env.PULSE_TOKEN_PUBLIC_KEYS
 })
 
-describe('verifyHubToken', () => {
-  const base = { userId: 'u1', email: 'a@b.com', iss: 'hub', exp: Math.floor(Date.now() / 1000) + 3600 }
+describe('verifyPulseToken', () => {
+  const base = { userId: 'u1', email: 'a@b.com', iss: 'controlplane', exp: Math.floor(Date.now() / 1000) + 3600 }
 
   it('accepts a valid RS256 hub token', () => {
     const t = mintRs256({ ...base, jti: 'j1' }, { kid: KID })
-    expect(verifyHubToken(t)?.userId).toBe('u1')
+    expect(verifyPulseToken(t)?.userId).toBe('u1')
   })
 
   it('rejects a wrong signature', () => {
     const t = mintRs256({ ...base }, { kid: KID }).slice(0, -2) + 'xx'
-    expect(verifyHubToken(t)).toBeNull()
+    expect(verifyPulseToken(t)).toBeNull()
   })
 
-  it('rejects a non-hub issuer', () => {
-    expect(verifyHubToken(mintRs256({ ...base, iss: 'other' }, { kid: KID }))).toBeNull()
+  it('rejects a non-controlplane issuer', () => {
+    expect(verifyPulseToken(mintRs256({ ...base, iss: 'other' }, { kid: KID }))).toBeNull()
   })
 
   it('rejects an expired token', () => {
     expect(
-      verifyHubToken(mintRs256({ ...base, exp: Math.floor(Date.now() / 1000) - 5 }, { kid: KID }))
+      verifyPulseToken(mintRs256({ ...base, exp: Math.floor(Date.now() / 1000) - 5 }, { kid: KID }))
     ).toBeNull()
   })
 
   it('rejects a revoked jti (offline revocation)', () => {
     const t = mintRs256({ ...base, jti: 'revoked-1' }, { kid: KID })
-    expect(verifyHubToken(t)?.userId).toBe('u1')
+    expect(verifyPulseToken(t)?.userId).toBe('u1')
     revokeJti('revoked-1', base.exp)
     _clearCache()
-    expect(verifyHubToken(t)).toBeNull()
+    expect(verifyPulseToken(t)).toBeNull()
   })
 
   // ── Dual-accept: RS256 (asymmetric) ───────────────────────────────────────────
   it('accepts a valid RS256 token signed by the hub private key (matching kid)', () => {
     const t = mintRs256({ ...base, jti: 'r1' }, { kid: KID })
-    expect(verifyHubToken(t)?.userId).toBe('u1')
+    expect(verifyPulseToken(t)?.userId).toBe('u1')
   })
 
   it('accepts a valid RS256 token with no kid (tries all published keys)', () => {
     const t = mintRs256({ ...base }, {})
-    expect(verifyHubToken(t)?.userId).toBe('u1')
+    expect(verifyPulseToken(t)?.userId).toBe('u1')
   })
 
   it('accepts RS256 when the kid is unknown but a published key still verifies', () => {
     const t = mintRs256({ ...base }, { kid: 'some-unknown-kid' })
-    expect(verifyHubToken(t)?.userId).toBe('u1')
+    expect(verifyPulseToken(t)?.userId).toBe('u1')
   })
 
   it('rejects an RS256 token signed by a different (wrong) private key', () => {
     const t = mintRs256({ ...base }, { key: WRONG_PRIV })
-    expect(verifyHubToken(t)).toBeNull()
+    expect(verifyPulseToken(t)).toBeNull()
   })
 
   it('rejects an expired RS256 token', () => {
     const t = mintRs256({ ...base, exp: Math.floor(Date.now() / 1000) - 5 }, { kid: KID })
-    expect(verifyHubToken(t)).toBeNull()
+    expect(verifyPulseToken(t)).toBeNull()
   })
 
   it('rejects a revoked RS256 jti', () => {
     const t = mintRs256({ ...base, jti: 'rs-revoked' }, { kid: KID })
-    expect(verifyHubToken(t)?.userId).toBe('u1')
+    expect(verifyPulseToken(t)?.userId).toBe('u1')
     revokeJti('rs-revoked', base.exp)
     _clearCache()
-    expect(verifyHubToken(t)).toBeNull()
+    expect(verifyPulseToken(t)).toBeNull()
   })
 
   it('rejects an unsupported alg (e.g. none)', () => {
     const header = b64url(JSON.stringify({ alg: 'none', typ: 'JWT' }))
     const body = b64url(JSON.stringify(base))
-    expect(verifyHubToken(`${header}.${body}.`)).toBeNull()
+    expect(verifyPulseToken(`${header}.${body}.`)).toBeNull()
   })
 
   it('REJECTS HS256 (retired in Stage 4 — RS256 only)', () => {
     const t = mintHubToken({ ...base, jti: 'hs-retired' })
-    expect(verifyHubToken(t)).toBeNull()
+    expect(verifyPulseToken(t)).toBeNull()
   })
 })

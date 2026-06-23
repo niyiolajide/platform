@@ -12,4 +12,4 @@ export {
   revokeJti,
   _clearCache,
 } from './store'
-export { verifyHubToken, type HubJwtPayload } from './jwt'
+export { verifyPulseToken, type PulseJwtPayload } from './jwt'

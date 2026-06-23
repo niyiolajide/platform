@@ -20,6 +20,6 @@ export {
   publishRevocations,
   revokeJti,
   _clearCache,
-  verifyHubToken,
-  type HubJwtPayload,
+  verifyPulseToken,
+  type PulseJwtPayload,
 } from './control'

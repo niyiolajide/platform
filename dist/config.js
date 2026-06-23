@@ -22,28 +22,28 @@ function configurePlatform(opts) {
 function getLogger() {
     return logger;
 }
-/** API keys + the hub-token signing/verification material — read live from env. */
+/** API keys + the pulse-token signing/verification material — read live from env. */
 exports.keys = {
     anthropicApiKey: () => process.env.ANTHROPIC_API_KEY || '',
     geminiApiKey: () => process.env.GEMINI_API_KEY || '',
     sharedJwtSecret: () => process.env.SHARED_JWT_SECRET || '',
     /**
-     * Hub RSA private signing key (PKCS8 PEM), base64-encoded in
-     * HUB_TOKEN_PRIVATE_KEY_B64. Present ONLY in the auth-service container — apps
+     * ControlPlane RSA private signing key (PKCS8 PEM), base64-encoded in
+     * PULSE_TOKEN_PRIVATE_KEY_B64. Present ONLY in the ControlPlane container — apps
      * never receive it, so they can verify but cannot mint. Empty string if unset.
      */
-    hubPrivateKey: () => {
-        const b64 = process.env.HUB_TOKEN_PRIVATE_KEY_B64;
+    pulsePrivateKey: () => {
+        const b64 = process.env.PULSE_TOKEN_PRIVATE_KEY_B64;
         return b64 ? Buffer.from(b64, 'base64').toString('utf8') : '';
     },
     /**
-     * Hub RSA public verification keys from HUB_TOKEN_PUBLIC_KEYS — a JSON array of
+     * ControlPlane RSA public verification keys from PULSE_TOKEN_PUBLIC_KEYS — a JSON array of
      * `{kid, pem}` where `pem` is a base64-encoded SPKI PEM. Non-secret; shipped to
      * every container. Multiple entries support zero-downtime key rotation (verifiers
      * accept any listed key; the hub signs with one `kid`). Returns [] if unset/invalid.
      */
-    hubPublicKeys: () => {
-        const raw = process.env.HUB_TOKEN_PUBLIC_KEYS;
+    pulsePublicKeys: () => {
+        const raw = process.env.PULSE_TOKEN_PUBLIC_KEYS;
         if (!raw)
             return [];
         try {

@@ -103,7 +103,7 @@ exports.NOTIFY_SETTINGS_SCHEMA = zod_1.z.object({
 });
 exports.REVOCATIONS_SCHEMA = zod_1.z.object({
     schemaVersion: zod_1.z.number().int().default(1),
-    // Revoked hub-token jti values, each with the token's exp (epoch seconds) so
+    // Revoked pulse-token jti values, each with the token's exp (epoch seconds) so
     // the hub can prune entries once they can no longer be presented.
     revoked: zod_1.z.array(zod_1.z.object({ jti: zod_1.z.string(), exp: zod_1.z.number().int() })).default([]),
 });

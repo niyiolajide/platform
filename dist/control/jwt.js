@@ -3,7 +3,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.verifyHubToken = verifyHubToken;
+exports.verifyPulseToken = verifyPulseToken;
 const crypto_1 = __importDefault(require("crypto"));
 const config_1 = require("../config");
 const store_1 = require("./store");
@@ -24,7 +24,7 @@ function b64urlJson(s) {
  * (so rotation never locks anyone out). Returns true if any candidate verifies.
  */
 function verifyRs256(signingInput, sig, kid) {
-    const all = config_1.keys.hubPublicKeys();
+    const all = config_1.keys.pulsePublicKeys();
     const candidates = kid ? all.filter((k) => k.kid === kid) : all;
     // If a kid was supplied but doesn't match any known key, fall back to trying all
     // (tolerates a token minted under a key not yet in this app's env).
@@ -42,11 +42,11 @@ function verifyRs256(signingInput, sig, kid) {
     return false;
 }
 /**
- * Verify a hub-token: an RS256 (asymmetric) OR HS256 (legacy shared-secret)
+ * Verify a pulse-token: an RS256 (asymmetric) OR HS256 (legacy shared-secret)
  * signature, plus `iss==='hub'`, not expired, and jti not revoked. Returns the
  * payload or null.
  */
-function verifyHubToken(token) {
+function verifyPulseToken(token) {
     if (!token)
         return null;
     const parts = token.split('.');
@@ -58,14 +58,14 @@ function verifyHubToken(token) {
         return null;
     const signingInput = `${headerB64}.${payloadB64}`;
     const sig = b64urlDecode(sigB64);
-    // RS256-only (Stage 4): HS256 is retired — the hub is the sole minter via its
+    // RS256-only (Stage 4): HS256 is retired — ControlPlane is the sole minter via its
     // private key; apps verify with the published public key(s) and cannot forge.
     if (header.alg !== 'RS256')
         return null;
     if (!verifyRs256(signingInput, sig, header.kid))
         return null;
     const payload = b64urlJson(payloadB64);
-    if (!payload || payload.iss !== 'hub')
+    if (!payload || payload.iss !== 'controlplane')
         return null;
     if (payload.exp && Date.now() / 1000 > payload.exp)
         return null;

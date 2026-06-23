@@ -14,7 +14,7 @@ var __exportStar = (this && this.__exportStar) || function(m, exports) {
     for (var p in m) if (p !== "default" && !Object.prototype.hasOwnProperty.call(exports, p)) __createBinding(exports, m, p);
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.verifyHubToken = exports._clearCache = exports.revokeJti = exports.publishRevocations = exports.publishNotifySettings = exports.publishAiSettings = exports.isRevoked = exports.readRevocations = exports.readNotifySettings = exports.REVOCATIONS_SCHEMA = exports.NOTIFY_SETTINGS_SCHEMA = exports.NOTIFY_CHANNEL = exports.keys = exports.getLogger = exports.configurePlatform = void 0;
+exports.verifyPulseToken = exports._clearCache = exports.revokeJti = exports.publishRevocations = exports.publishNotifySettings = exports.publishAiSettings = exports.isRevoked = exports.readRevocations = exports.readNotifySettings = exports.REVOCATIONS_SCHEMA = exports.NOTIFY_SETTINGS_SCHEMA = exports.NOTIFY_CHANNEL = exports.keys = exports.getLogger = exports.configurePlatform = void 0;
 // Top-level barrel. Prefer the subpath imports (`@niyi/platform/ai`, `/notify`,
 // `/control`) in apps; this re-exports the common surface for convenience.
 // Note: the AI settings symbols come via `./ai`; from `./control` we re-export
@@ -37,4 +37,4 @@ Object.defineProperty(exports, "publishNotifySettings", { enumerable: true, get:
 Object.defineProperty(exports, "publishRevocations", { enumerable: true, get: function () { return control_1.publishRevocations; } });
 Object.defineProperty(exports, "revokeJti", { enumerable: true, get: function () { return control_1.revokeJti; } });
 Object.defineProperty(exports, "_clearCache", { enumerable: true, get: function () { return control_1._clearCache; } });
-Object.defineProperty(exports, "verifyHubToken", { enumerable: true, get: function () { return control_1.verifyHubToken; } });
+Object.defineProperty(exports, "verifyPulseToken", { enumerable: true, get: function () { return control_1.verifyPulseToken; } });

@@ -118,7 +118,7 @@ export type NotifySettings = z.infer<typeof NOTIFY_SETTINGS_SCHEMA>
 
 export const REVOCATIONS_SCHEMA = z.object({
   schemaVersion: z.number().int().default(1),
-  // Revoked hub-token jti values, each with the token's exp (epoch seconds) so
+  // Revoked pulse-token jti values, each with the token's exp (epoch seconds) so
   // the hub can prune entries once they can no longer be presented.
   revoked: z.array(z.object({ jti: z.string(), exp: z.number().int() })).default([]),
 })
