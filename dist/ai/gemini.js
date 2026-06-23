@@ -38,7 +38,7 @@ exports.geminiAdapter = {
     kind: 'gemini',
     label: 'Gemini (Google)',
     configured: () => Boolean(config_1.keys.geminiApiKey()),
-    async callStructured(model, req, _signal) {
+    async callStructured(model, req, signal) {
         const client = genai();
         if (!client)
             return { content: null };
@@ -55,10 +55,10 @@ exports.geminiAdapter = {
         const prompt = responseSchema
             ? req.prompt
             : `${req.prompt}\n\nReturn ONLY a JSON object conforming to this JSON Schema (no markdown, no commentary):\n${JSON.stringify(req.jsonSchema)}`;
-        const resp = await m.generateContent(prompt);
+        const resp = await m.generateContent(prompt, { signal });
         return { content: (0, util_1.parseJsonObject)(resp.response.text()), usage: geminiUsage(resp) };
     },
-    async callText(model, req, _signal) {
+    async callText(model, req, signal) {
         const client = genai();
         if (!client)
             return { content: null };
@@ -67,7 +67,7 @@ exports.geminiAdapter = {
             ...(req.system ? { systemInstruction: req.system } : {}),
             generationConfig: geminiGenConfig(model, req.maxTokens ?? 1024, false),
         }, { timeout: 60000 });
-        const resp = await m.generateContent(req.prompt);
+        const resp = await m.generateContent(req.prompt, { signal });
         return { content: resp.response.text().trim() || null, usage: geminiUsage(resp) };
     },
 };

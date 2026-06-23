@@ -43,7 +43,7 @@ export const geminiAdapter: ProviderAdapter = {
   label: 'Gemini (Google)',
   configured: () => Boolean(keys.geminiApiKey()),
 
-  async callStructured(model, req: StructuredAttempt, _signal) {
+  async callStructured(model, req: StructuredAttempt, signal) {
     const client = genai()
     if (!client) return { content: null }
     // Prefer controlled generation (responseSchema) for schema-faithful JSON; fall
@@ -62,11 +62,11 @@ export const geminiAdapter: ProviderAdapter = {
     const prompt = responseSchema
       ? req.prompt
       : `${req.prompt}\n\nReturn ONLY a JSON object conforming to this JSON Schema (no markdown, no commentary):\n${JSON.stringify(req.jsonSchema)}`
-    const resp = await m.generateContent(prompt)
+    const resp = await m.generateContent(prompt, { signal })
     return { content: parseJsonObject(resp.response.text()), usage: geminiUsage(resp) }
   },
 
-  async callText(model, req: AttemptRequest, _signal) {
+  async callText(model, req: AttemptRequest, signal) {
     const client = genai()
     if (!client) return { content: null }
     const m = client.getGenerativeModel(
@@ -77,7 +77,7 @@ export const geminiAdapter: ProviderAdapter = {
       },
       { timeout: 60_000 },
     )
-    const resp = await m.generateContent(req.prompt)
+    const resp = await m.generateContent(req.prompt, { signal })
     return { content: resp.response.text().trim() || null, usage: geminiUsage(resp) }
   },
 }

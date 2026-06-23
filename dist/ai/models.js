@@ -20,10 +20,10 @@ exports.AI_MODELS = {
 // USD list prices as of 2026-06 (converted to cents/1M = USD/1M * 100).
 // Conservative: where a model has tiered/context pricing we take the standard tier.
 exports.MODEL_PRICES = [
-    // Anthropic (Claude) — $/MTok: opus 15/75, sonnet 3/15, haiku 0.80/4.
-    { model: 'claude-opus-4-8', per1MInCents: 1500, per1MOutCents: 7500, since: '2026-01-01' },
+    // Anthropic (Claude) — $/MTok: opus 5/25, sonnet 3/15, haiku 1/5.
+    { model: 'claude-opus-4-8', per1MInCents: 500, per1MOutCents: 2500, since: '2026-01-01' },
     { model: 'claude-sonnet-4-6', per1MInCents: 300, per1MOutCents: 1500, since: '2026-01-01' },
-    { model: 'claude-haiku-4-5', per1MInCents: 80, per1MOutCents: 400, since: '2026-01-01' },
+    { model: 'claude-haiku-4-5', per1MInCents: 100, per1MOutCents: 500, since: '2026-01-01' },
     // Gemini (Google) — $/MTok (standard ≤200k context tier): pro 1.25/10,
     // flash 0.30/2.50, flash-lite 0.10/0.40, 2.0-flash 0.10/0.40.
     { model: 'gemini-2.5-pro', per1MInCents: 125, per1MOutCents: 1000, since: '2026-01-01' },
