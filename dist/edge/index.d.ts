@@ -16,6 +16,19 @@ export interface HubAuthGateOptions {
      */
     hubUrlFallback?: string;
 }
+/** True if the `hub-token` is present as a cookie or `Authorization: Bearer` header. */
+export declare function hasHubToken(request: NextRequest): boolean;
+/**
+ * Builds the redirect to the hub `/login` for an unauthenticated page request.
+ * Behind the shared Tailscale proxy the hub lives at the SAME origin root, so the
+ * login URL is derived from the forwarded host/proto (edge can't read non-NEXT_PUBLIC
+ * env at runtime). Falls back to the configured hub URL for direct/local access.
+ * The `next` param bounces back to the original (basePath-aware, scheme-correct) URL.
+ *
+ * Shared primitive: used by `hubAuthGate` and by apps with a custom gate model
+ * (e.g. an allow-list + CSRF) that only need the redirect, not the full gate.
+ */
+export declare function hubLoginRedirect(request: NextRequest, opts?: Pick<HubAuthGateOptions, 'basePath' | 'hubUrlFallback'>): NextResponse;
 /**
  * Returns a `NextResponse` to short-circuit the request, or `null` to continue.
  *

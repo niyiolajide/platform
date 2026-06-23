@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { NextRequest } from 'next/server'
-import { hubAuthGate, type HubAuthGateOptions } from '../src/edge'
+import { hubAuthGate, hubLoginRedirect, hasHubToken, type HubAuthGateOptions } from '../src/edge'
 
 function makeReq(
   path: string,
@@ -63,5 +63,24 @@ describe('hubAuthGate', () => {
     const res = hubAuthGate(makeReq('/dashboard'), { ...opts, hubUrlFallback: 'http://localhost:4000' })
     expect(res!.status).toBe(307)
     expect(res!.headers.get('location')).toContain('http://localhost:4000/login')
+  })
+})
+
+describe('hasHubToken', () => {
+  it('detects cookie and Bearer, false otherwise', () => {
+    expect(hasHubToken(makeReq('/x', { cookie: 't' }))).toBe(true)
+    expect(hasHubToken(makeReq('/x', { bearer: 't' }))).toBe(true)
+    expect(hasHubToken(makeReq('/x'))).toBe(false)
+  })
+})
+
+describe('hubLoginRedirect (standalone primitive for custom gates)', () => {
+  it('builds a same-origin hub login redirect with a basePath-aware next', () => {
+    const res = hubLoginRedirect(makeReq('/properties/123', PROXY), { basePath: '/property' })
+    expect(res.status).toBe(307)
+    const u = new URL(res.headers.get('location')!)
+    expect(u.origin).toBe('https://media002.tailc29663.ts.net')
+    expect(u.pathname).toBe('/login')
+    expect(u.searchParams.get('next')).toBe('https://media002.tailc29663.ts.net/property/properties/123')
   })
 })
