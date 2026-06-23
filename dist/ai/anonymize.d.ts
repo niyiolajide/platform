@@ -8,6 +8,14 @@ export interface Anonymizer {
     unmaskDeep<T>(value: T): T;
     /** Whether any PII was detected/replaced so far (useful for logging). */
     hasMappings(): boolean;
+    /**
+     * Title-Case word runs that survived masking across all mask() calls on this
+     * instance — *possible* person names the KNOWN_NAMES allow-list missed (and that
+     * therefore went to the cloud unmasked). Observability for the allow-list recall
+     * gap; the caller attaches these to telemetry for triage. Heuristic + Title-Case-
+     * only, so it undercounts. Empty when nothing suspicious survived.
+     */
+    possibleUnmaskedNames(): string[];
 }
 /**
  * Create a per-request anonymizer. Mask the prompt and system with the SAME

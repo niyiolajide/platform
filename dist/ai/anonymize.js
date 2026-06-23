@@ -123,7 +123,7 @@ const NOT_A_PERSON = new Set([
     'Net Worth', 'Cash Reserve', 'Online Savings', 'Savings Account', 'Spending Account',
     'Health Savings', 'Active Cash', 'Spark Cash',
 ]);
-function warnPossibleUnmaskedNames(masked) {
+function detectPossibleUnmaskedNames(masked) {
     const hits = new Set();
     for (const m of masked.matchAll(NAME_LIKE_RE)) {
         if (m[0].includes('['))
@@ -132,10 +132,7 @@ function warnPossibleUnmaskedNames(masked) {
             continue;
         hits.add(m[0]);
     }
-    if (hits.size) {
-        // info, not warn: an audit signal to grow KNOWN_NAMES from, not an alert.
-        (0, config_1.getLogger)().info({ candidates: [...hits].slice(0, 20), count: hits.size }, '[ai/anonymize] possible unmasked person name(s) left in prompt');
-    }
+    return [...hits];
 }
 /**
  * Create a per-request anonymizer. Mask the prompt and system with the SAME
@@ -146,6 +143,8 @@ function createAnonymizer() {
     const originalToToken = new Map();
     const tokenToOriginal = new Map();
     const counters = {};
+    // Accumulates across mask() calls (prompt + system share one instance).
+    const nameCandidates = new Set();
     function tokenFor(category, original) {
         const existing = originalToToken.get(original);
         if (existing)
@@ -167,8 +166,14 @@ function createAnonymizer() {
                 return tokenFor(det.category, m);
             });
         }
-        // Observability only — never mutates `out` (see warner note above).
-        warnPossibleUnmaskedNames(out);
+        // Observability only — never mutates `out` (see warner note above). Record
+        // candidates on the instance (for telemetry) and log them as an audit signal.
+        const cand = detectPossibleUnmaskedNames(out);
+        if (cand.length) {
+            cand.forEach((c) => nameCandidates.add(c));
+            // info, not warn: a signal to grow KNOWN_NAMES from, not an alert.
+            (0, config_1.getLogger)().info({ candidates: cand.slice(0, 20), count: cand.length }, '[ai/anonymize] possible unmasked person name(s) left in prompt');
+        }
         return out;
     }
     function unmask(text) {
@@ -209,5 +214,6 @@ function createAnonymizer() {
         unmask,
         unmaskDeep,
         hasMappings: () => tokenToOriginal.size > 0,
+        possibleUnmaskedNames: () => [...nameCandidates],
     };
 }

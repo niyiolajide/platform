@@ -149,20 +149,14 @@ const NOT_A_PERSON = new Set<string>([
   'Health Savings', 'Active Cash', 'Spark Cash',
 ])
 
-function warnPossibleUnmaskedNames(masked: string): void {
+function detectPossibleUnmaskedNames(masked: string): string[] {
   const hits = new Set<string>()
   for (const m of masked.matchAll(NAME_LIKE_RE)) {
     if (m[0].includes('[')) continue // never matches a placeholder, but be safe
     if (NOT_A_PERSON.has(m[0])) continue
     hits.add(m[0])
   }
-  if (hits.size) {
-    // info, not warn: an audit signal to grow KNOWN_NAMES from, not an alert.
-    getLogger().info(
-      { candidates: [...hits].slice(0, 20), count: hits.size },
-      '[ai/anonymize] possible unmasked person name(s) left in prompt',
-    )
-  }
+  return [...hits]
 }
 
 export interface Anonymizer {
@@ -174,6 +168,14 @@ export interface Anonymizer {
   unmaskDeep<T>(value: T): T
   /** Whether any PII was detected/replaced so far (useful for logging). */
   hasMappings(): boolean
+  /**
+   * Title-Case word runs that survived masking across all mask() calls on this
+   * instance — *possible* person names the KNOWN_NAMES allow-list missed (and that
+   * therefore went to the cloud unmasked). Observability for the allow-list recall
+   * gap; the caller attaches these to telemetry for triage. Heuristic + Title-Case-
+   * only, so it undercounts. Empty when nothing suspicious survived.
+   */
+  possibleUnmaskedNames(): string[]
 }
 
 /**
@@ -185,6 +187,8 @@ export function createAnonymizer(): Anonymizer {
   const originalToToken = new Map<string, string>()
   const tokenToOriginal = new Map<string, string>()
   const counters: Record<string, number> = {}
+  // Accumulates across mask() calls (prompt + system share one instance).
+  const nameCandidates = new Set<string>()
 
   function tokenFor(category: PiiCategory, original: string): string {
     const existing = originalToToken.get(original)
@@ -205,8 +209,17 @@ export function createAnonymizer(): Anonymizer {
         return tokenFor(det.category, m)
       })
     }
-    // Observability only — never mutates `out` (see warner note above).
-    warnPossibleUnmaskedNames(out)
+    // Observability only — never mutates `out` (see warner note above). Record
+    // candidates on the instance (for telemetry) and log them as an audit signal.
+    const cand = detectPossibleUnmaskedNames(out)
+    if (cand.length) {
+      cand.forEach((c) => nameCandidates.add(c))
+      // info, not warn: a signal to grow KNOWN_NAMES from, not an alert.
+      getLogger().info(
+        { candidates: cand.slice(0, 20), count: cand.length },
+        '[ai/anonymize] possible unmasked person name(s) left in prompt',
+      )
+    }
     return out
   }
 
@@ -250,5 +263,6 @@ export function createAnonymizer(): Anonymizer {
     unmask,
     unmaskDeep,
     hasMappings: () => tokenToOriginal.size > 0,
+    possibleUnmaskedNames: () => [...nameCandidates],
   }
 }

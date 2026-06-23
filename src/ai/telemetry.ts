@@ -59,6 +59,15 @@ export interface AiCallRecord {
   prompt?: string
   /** ANONYMIZED response text. Present only when payload logging is on. */
   response?: string
+  /**
+   * Title-Case word runs that survived masking — *possible* person names the
+   * KNOWN_NAMES allow-list missed and that therefore reached the provider
+   * unmasked. Surfaced for triage in the Hub's AI Logs (grow KNOWN_NAMES from
+   * these). Heuristic + Title-Case-only → undercounts. Absent/empty when none.
+   * NOTE: these are themselves possible PII; they're recorded because they're the
+   * triage signal and already appear in the stored `prompt` when payloads are on.
+   */
+  unmaskedNameCandidates?: string[]
 }
 
 /** A telemetry sink. MUST NOT throw (recordAiCall guards, but be defensive). */

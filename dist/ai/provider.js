@@ -96,6 +96,11 @@ async function runCascade(tier, kind, req, pref, onModel, only) {
             if (responseText != null)
                 rec.response = responseText;
         }
+        // Allow-list recall-gap signal for triage in AI Logs — attached independent of
+        // logPayloads (it's the triage deliverable, not bulk payload text). Empty → omit.
+        const nameCandidates = anon?.possibleUnmaskedNames();
+        if (nameCandidates && nameCandidates.length)
+            rec.unmaskedNameCandidates = nameCandidates;
         (0, telemetry_1.recordAiCall)(rec);
     };
     for (let i = 0; i < steps.length; i++) {
