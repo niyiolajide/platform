@@ -69,13 +69,11 @@ const DETECTORS = [
     },
     {
         category: 'IP',
-        // IPv4
+        // IPv4 only. (A prior IPv6 detector was removed: its `(?:hex:){2,7}hex` shape
+        // matched clock times "12:34:56" and ratios "3:2:1" as IPs while MISSING the
+        // common `::`-compressed form like "fe80::1" — net-negative. A correct IPv6
+        // matcher needs the full canonical regex; not worth it for this data domain.)
         re: /\b(?:(?:25[0-5]|2[0-4]\d|1?\d?\d)\.){3}(?:25[0-5]|2[0-4]\d|1?\d?\d)\b/g,
-    },
-    {
-        category: 'IP',
-        // IPv6 (compressed forms not exhaustively covered; at least 3 hextet groups)
-        re: /\b(?:[A-Fa-f0-9]{1,4}:){2,7}[A-Fa-f0-9]{1,4}\b/g,
     },
     {
         category: 'SSN',
@@ -107,6 +105,38 @@ const DETECTORS = [
     // Person names: ONLY those on the KNOWN_NAMES allow-list (no heuristic guessing).
     ...(KNOWN_NAMES_RE ? [{ category: 'PERSON', re: KNOWN_NAMES_RE }] : []),
 ];
+// ── Recall-gap observability (does NOT mask) ──────────────────────────────────
+// The KNOWN_NAMES allow-list is precise but low-recall: any person NOT on the list
+// (a transfer counterparty, a doctor, a payee) passes to the cloud unmasked, and
+// today that leak is silent. This warner makes it OBSERVABLE: after masking, it
+// scans for Title-Case word runs (2–3 words) that survived — *possible* unmasked
+// names — and logs them at debug. It never masks them (the allow-list owns
+// precision); it only surfaces them so the leak rate is auditable and KNOWN_NAMES
+// can be grown from real data. Heuristic + Title-Case-only, so it UNDERCOUNTS
+// (misses lowercase / single-word names) — it's a floor on the leak, not a census.
+const NAME_LIKE_RE = /\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,2}\b/g;
+// Title-Case runs that are NOT people — orgs, institutions, and UI labels seen in
+// the platform's finance data. Extend as false alarms show up in the warner output.
+const NOT_A_PERSON = new Set([
+    'Wells Fargo', 'Capital One', 'Charles Schwab', 'Rocket Mortgage', 'Discover Bank',
+    'Ally Bank', 'Treasury Direct', 'Whole Foods', 'Bank Account', 'Brokerage Account',
+    'Net Worth', 'Cash Reserve', 'Online Savings', 'Savings Account', 'Spending Account',
+    'Health Savings', 'Active Cash', 'Spark Cash',
+]);
+function warnPossibleUnmaskedNames(masked) {
+    const hits = new Set();
+    for (const m of masked.matchAll(NAME_LIKE_RE)) {
+        if (m[0].includes('['))
+            continue; // never matches a placeholder, but be safe
+        if (NOT_A_PERSON.has(m[0]))
+            continue;
+        hits.add(m[0]);
+    }
+    if (hits.size) {
+        // info, not warn: an audit signal to grow KNOWN_NAMES from, not an alert.
+        (0, config_1.getLogger)().info({ candidates: [...hits].slice(0, 20), count: hits.size }, '[ai/anonymize] possible unmasked person name(s) left in prompt');
+    }
+}
 /**
  * Create a per-request anonymizer. Mask the prompt and system with the SAME
  * instance so a value appearing in both maps to one consistent token, then unmask
@@ -137,6 +167,8 @@ function createAnonymizer() {
                 return tokenFor(det.category, m);
             });
         }
+        // Observability only — never mutates `out` (see warner note above).
+        warnPossibleUnmaskedNames(out);
         return out;
     }
     function unmask(text) {
