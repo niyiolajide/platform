@@ -52,6 +52,7 @@ async function sendTelegram(text: string): Promise<boolean> {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ chat_id: chat, text, parse_mode: 'HTML', disable_web_page_preview: true }),
+      signal: AbortSignal.timeout(15_000),
     })
     return res.ok
   } catch (err) {
@@ -93,6 +94,7 @@ async function sendEmail(subject: string, text: string): Promise<boolean> {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ to, subject, text }),
+      signal: AbortSignal.timeout(15_000),
     })
     return res.ok
   } catch (err) {
@@ -118,6 +120,15 @@ export async function notify(input: NotifyInput): Promise<Record<NotifyChannel, 
       else if (c === 'email') result.email = await sendEmail(`[${input.app}] ${input.title}`, plain)
     }),
   )
+  // Delivery is best-effort (never throws), but a notification that fails on EVERY
+  // resolved channel is indistinguishable from success to the caller (which discards
+  // the result map). Warn so a misconfigured/hung channel doesn't drop alerts silently.
+  if (channels.length > 0 && Object.values(result).every((ok) => !ok)) {
+    getLogger().warn(
+      { app: input.app, level, channels, title: input.title },
+      '[notify] all resolved channels failed — notification NOT delivered',
+    )
+  }
   return result as Record<NotifyChannel, boolean>
 }
 

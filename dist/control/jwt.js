@@ -7,6 +7,23 @@ exports.verifyPulseToken = verifyPulseToken;
 const crypto_1 = __importDefault(require("crypto"));
 const config_1 = require("../config");
 const store_1 = require("./store");
+// ── Offline pulse-token verification ────────────────────────────────────────────
+// Apps verify the shared pulse-token locally against ControlPlane's published RS256
+// public key(s) (no network call) and additionally check the offline revocation
+// denylist. This keeps SSO available even when ControlPlane is down, while still
+// supporting revocation. Implemented with Node's built-in crypto so the package has
+// no jsonwebtoken dependency and works inside Next standalone images.
+//
+// RS256-ONLY (Stage 4): ControlPlane is the sole minter via its RSA private key; apps
+// verify with the published public key(s) and CANNOT forge. The header `kid` is matched
+// against the published keys (or every key is tried when no kid is present) to support
+// zero-downtime key rotation. HS256/shared-secret signing is fully retired.
+//
+// Claims enforced: `iss==='controlplane'`, RS256 signature, a REQUIRED `exp` (a token
+// with no expiry is rejected — there must be no immortal tokens), `nbf` when present,
+// an optional caller-supplied `expectedAud` (service/job tokens carry an `aud`), and
+// the offline `jti` revocation denylist. A small clock-skew tolerance is allowed.
+const CLOCK_SKEW_S = 30;
 function b64urlDecode(s) {
     return Buffer.from(s.replace(/-/g, '+').replace(/_/g, '/'), 'base64');
 }
@@ -42,11 +59,11 @@ function verifyRs256(signingInput, sig, kid) {
     return false;
 }
 /**
- * Verify a pulse-token: an RS256 (asymmetric) OR HS256 (legacy shared-secret)
- * signature, plus `iss==='hub'`, not expired, and jti not revoked. Returns the
- * payload or null.
+ * Verify a pulse-token: an RS256 signature against ControlPlane's published key(s),
+ * `iss==='controlplane'`, a REQUIRED non-expired `exp`, `nbf` (when present), an
+ * optional `expectedAud`, and `jti` not revoked. Returns the payload or null.
  */
-function verifyPulseToken(token) {
+function verifyPulseToken(token, opts = {}) {
     if (!token)
         return null;
     const parts = token.split('.');
@@ -67,8 +84,23 @@ function verifyPulseToken(token) {
     const payload = b64urlJson(payloadB64);
     if (!payload || payload.iss !== 'controlplane')
         return null;
-    if (payload.exp && Date.now() / 1000 > payload.exp)
+    const now = Date.now() / 1000;
+    // Require an expiry — a token with no `exp` would be valid forever and is unprunable
+    // from the revocation denylist; reject it outright. (Every ControlPlane minter sets exp.)
+    // Strict (no skew): never extend a token's life past its stated expiry.
+    if (typeof payload.exp !== 'number' || now > payload.exp)
         return null;
+    // Enforce not-before when present (small skew tolerance for a just-minted token whose
+    // nbf is marginally ahead of this host's clock).
+    if (typeof payload.nbf === 'number' && now < payload.nbf - CLOCK_SKEW_S)
+        return null;
+    // Optional audience scoping — reject a token minted for a different service.
+    if (opts.expectedAud) {
+        const aud = payload.aud;
+        const ok = Array.isArray(aud) ? aud.includes(opts.expectedAud) : aud === opts.expectedAud;
+        if (!ok)
+            return null;
+    }
     if ((0, store_1.isRevoked)(payload.jti))
         return null;
     return payload;

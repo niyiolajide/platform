@@ -36,6 +36,7 @@ async function sendTelegram(text) {
             method: 'POST',
             headers: { 'content-type': 'application/json' },
             body: JSON.stringify({ chat_id: chat, text, parse_mode: 'HTML', disable_web_page_preview: true }),
+            signal: AbortSignal.timeout(15000),
         });
         return res.ok;
     }
@@ -79,6 +80,7 @@ async function sendEmail(subject, text) {
             method: 'POST',
             headers: { 'content-type': 'application/json' },
             body: JSON.stringify({ to, subject, text }),
+            signal: AbortSignal.timeout(15000),
         });
         return res.ok;
     }
@@ -105,6 +107,12 @@ async function notify(input) {
         else if (c === 'email')
             result.email = await sendEmail(`[${input.app}] ${input.title}`, plain);
     }));
+    // Delivery is best-effort (never throws), but a notification that fails on EVERY
+    // resolved channel is indistinguishable from success to the caller (which discards
+    // the result map). Warn so a misconfigured/hung channel doesn't drop alerts silently.
+    if (channels.length > 0 && Object.values(result).every((ok) => !ok)) {
+        (0, config_1.getLogger)().warn({ app: input.app, level, channels, title: input.title }, '[notify] all resolved channels failed — notification NOT delivered');
+    }
     return result;
 }
 function isNotifyConfigured() {
