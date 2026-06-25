@@ -1,3 +1,5 @@
+import { ulid, type RedisLike, type TelemetrySink } from '../telemetry/buffer';
+export { ulid, type RedisLike };
 /**
  * THE telemetry contract — the exact shape the Hub ingest endpoint expects. Built
  * once per AI attempt. `prompt`/`response` are anonymized and present only when
@@ -51,7 +53,7 @@ export interface AiCallRecord {
     unmaskedNameCandidates?: string[];
 }
 /** A telemetry sink. MUST NOT throw (recordAiCall guards, but be defensive). */
-export type AiTelemetrySink = (r: AiCallRecord) => void;
+export type AiTelemetrySink = TelemetrySink<AiCallRecord>;
 /**
  * Install (or clear, with null) the process-wide telemetry sink. Apps call this
  * once at startup, typically with `createRedisSink(getRedis())`. With no sink,
@@ -60,8 +62,6 @@ export type AiTelemetrySink = (r: AiCallRecord) => void;
 export declare function setAiTelemetrySink(fn: AiTelemetrySink | null): void;
 /** Whether a sink is installed (cheap guard the cascade uses to skip record-build). */
 export declare function hasAiTelemetrySink(): boolean;
-/** Generate a ULID-style sortable, collision-resistant id. */
-export declare function ulid(now?: number): string;
 /**
  * Anonymize a record's prompt/response (idempotent) and hand it to the sink. NEVER
  * throws: a missing sink is a silent no-op, and any sink/anonymizer error is logged
@@ -70,25 +70,15 @@ export declare function ulid(now?: number): string;
  */
 export declare function recordAiCall(record: AiCallRecord): void;
 export declare const AI_TELEMETRY_BUFFER_KEY = "ai:telemetry:buffer";
-/** Minimal Redis surface needed to buffer + ship telemetry. */
-export interface RedisLike {
-    lpush(key: string, ...values: string[]): Promise<unknown>;
-    lrange(key: string, start: number, stop: number): Promise<string[]>;
-    ltrim(key: string, start: number, stop: number): Promise<unknown>;
-}
 /**
- * A sink that LPUSHes each record (as JSON) onto a Redis list buffer. Fire-and-
- * forget: the returned sink never throws and never awaits (a rejected lpush is
- * caught + logged), so it stays off the hot path. Pair with `shipBuffer` from a
- * scheduled job to drain the buffer to the Hub.
+ * A sink that LPUSHes each AiCallRecord (as JSON) onto a Redis list buffer.
+ * Fire-and-forget; pair with `shipBuffer` from a scheduled job. See
+ * `createRedisListSink` for the generic contract.
  */
 export declare function createRedisSink(redis: RedisLike, key?: string): AiTelemetrySink;
 /**
- * Drain up to `batchSize` buffered records and hand them to `postFn` (which ships
- * them to the Hub). On a successful post the shipped slice is LTRIMmed off the
- * buffer (at-least-once: trim only after the post resolves, so a crash mid-ship
- * re-ships — the Hub dedups by record id). Oldest-first: records are LPUSHed, so
- * the tail of the list is the oldest; we read+trim the tail. Returns the count
- * shipped. A post failure leaves the buffer intact (records retried next tick).
+ * Drain up to `batchSize` buffered AiCallRecords and ship them via `postFn`
+ * (at-least-once; the Hub dedups by record id). See `drainBuffer` for the generic
+ * contract.
  */
 export declare function shipBuffer(redis: RedisLike, postFn: (batch: AiCallRecord[]) => Promise<void>, batchSize?: number, key?: string): Promise<number>;
