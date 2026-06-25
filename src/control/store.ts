@@ -191,9 +191,30 @@ export function readNotifySettings(): NotifySettings {
   return NOTIFY_SETTINGS_SCHEMA.parse(file)
 }
 
+// Revocation is security-critical: if the file is absent or corrupt the denylist is
+// empty, i.e. the system fails OPEN (revoke nothing). That must never be silent — warn
+// loudly (throttled so it doesn't spam the hot path) so a deleted/broken bundle surfaces.
+let lastRevocationsWarnMs = 0
+function warnRevocationsUnavailable(): void {
+  const now = Date.now()
+  if (now - lastRevocationsWarnMs < 10 * 60 * 1000) return
+  lastRevocationsWarnMs = now
+  getLogger().warn(
+    { file: 'revocations.json' },
+    '[control] revocations file absent/unreadable — FAILING OPEN (no tokens are being revoked). ' +
+      'Check the control bundle is published and mounted.',
+  )
+}
+
 export function readRevocations(): Revocations {
-  const file = (readRaw('revocations.json') as Record<string, unknown> | null) ?? {}
-  return REVOCATIONS_SCHEMA.parse(file)
+  const raw = readRaw('revocations.json') as Record<string, unknown> | null
+  if (raw == null) {
+    // Absent or unparseable (readRaw already logged a parse error). Surface the
+    // fail-open security impact explicitly, then return an empty (no-op) denylist.
+    warnRevocationsUnavailable()
+    return REVOCATIONS_SCHEMA.parse({})
+  }
+  return REVOCATIONS_SCHEMA.parse(raw)
 }
 
 export function isRevoked(jti: string | undefined | null): boolean {
