@@ -37,6 +37,10 @@ function runIsolated(opts) {
             env: { ...process.env, ...env },
             // Inherit stdio so the child's logs surface in the worker's log stream; keep IPC.
             stdio: ['inherit', 'inherit', 'inherit', 'ipc'],
+            // Structured-clone IPC (not the JSON default): the handler's result and the payload
+            // may carry Date/BigInt/Map/TypedArray. JSON would throw on BigInt and silently
+            // stringify Dates — a footgun for a generic primitive consumers return rich data from.
+            serialization: 'advanced',
         });
         const cleanup = () => {
             if (timeoutTimer)
