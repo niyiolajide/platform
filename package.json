@@ -1,6 +1,6 @@
 {
   "name": "@niyi/platform",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Shared control-plane library for the sibling apps: AI providers, notifications, the control-bundle file-bus, and the edge auth gate.",
   "license": "UNLICENSED",
   "repository": "github:niyiolajide/platform",
@@ -13,9 +13,14 @@
     "./analytics": { "types": "./dist/analytics/index.d.ts", "default": "./dist/analytics/index.js" },
     "./control": { "types": "./dist/control/index.d.ts", "default": "./dist/control/index.js" },
     "./edge": { "types": "./dist/edge/index.d.ts", "default": "./dist/edge/index.js" },
-    "./isolate": { "types": "./dist/isolate/index.d.ts", "default": "./dist/isolate/index.js" }
+    "./isolate": { "types": "./dist/isolate/index.d.ts", "default": "./dist/isolate/index.js" },
+    "./eslint": "./eslint-config.mjs",
+    "./design-guard": "./design-guard.mjs"
   },
-  "files": ["dist", "src"],
+  "bin": {
+    "pulse-design-guard": "./design-guard.mjs"
+  },
+  "files": ["dist", "src", "design-guard.mjs", "eslint-config.mjs"],
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc -p tsconfig.build.json --noEmit",
@@ -23,7 +28,13 @@
     "verify-dist": "npm run build && git diff --exit-code -- dist || (echo 'dist out of sync with source — run npm run build and commit' && exit 1)"
   },
   "dependencies": {
-    "zod": "^3.23.8"
+    "zod": "^3.23.8",
+    "@eslint/js": "^8.57.1",
+    "@typescript-eslint/eslint-plugin": "^8.61.1",
+    "@typescript-eslint/parser": "^8.61.1",
+    "eslint-plugin-react": "^7.37.5",
+    "eslint-plugin-react-hooks": "5.0.0-canary-7118f5dd7-20230705",
+    "globals": "^13.24.0"
   },
   "peerDependencies": {
     "@anthropic-ai/sdk": ">=0.30.0",
