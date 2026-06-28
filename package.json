@@ -11,6 +11,7 @@
     "./ai": { "types": "./dist/ai/index.d.ts", "default": "./dist/ai/index.js" },
     "./notify": { "types": "./dist/notify/index.d.ts", "default": "./dist/notify/index.js" },
     "./analytics": { "types": "./dist/analytics/index.d.ts", "default": "./dist/analytics/index.js" },
+    "./finance": { "types": "./dist/finance/index.d.ts", "default": "./dist/finance/index.js" },
     "./control": { "types": "./dist/control/index.d.ts", "default": "./dist/control/index.js" },
     "./edge": { "types": "./dist/edge/index.d.ts", "default": "./dist/edge/index.js" },
     "./isolate": { "types": "./dist/isolate/index.d.ts", "default": "./dist/isolate/index.js" },

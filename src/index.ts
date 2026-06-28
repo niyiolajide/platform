@@ -3,6 +3,7 @@
 // Note: the AI settings symbols come via `./ai`; from `./control` we re-export
 // only the non-AI surface to avoid duplicate-export conflicts.
 export { configurePlatform, getLogger, keys, type PlatformLogger } from './config'
+export * from './finance'
 export * from './ai'
 export * from './notify'
 export {

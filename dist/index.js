@@ -23,6 +23,7 @@ var config_1 = require("./config");
 Object.defineProperty(exports, "configurePlatform", { enumerable: true, get: function () { return config_1.configurePlatform; } });
 Object.defineProperty(exports, "getLogger", { enumerable: true, get: function () { return config_1.getLogger; } });
 Object.defineProperty(exports, "keys", { enumerable: true, get: function () { return config_1.keys; } });
+__exportStar(require("./finance"), exports);
 __exportStar(require("./ai"), exports);
 __exportStar(require("./notify"), exports);
 var control_1 = require("./control");
