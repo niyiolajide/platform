@@ -1,6 +1,7 @@
 /* eslint-disable max-lines -- central shared policy file intentionally enumerates all rule layers and exported variants. */
 import js from '@eslint/js'
 import nextPlugin from '@next/eslint-plugin-next'
+import { existsSync } from 'node:fs'
 import importPlugin from 'eslint-plugin-import'
 import jsxA11y from 'eslint-plugin-jsx-a11y'
 import promisePlugin from 'eslint-plugin-promise'
@@ -17,6 +18,7 @@ const JS_TS_FILES = ['**/*.{js,jsx,ts,tsx,mjs,cjs}']
 const JSX_FILES = ['**/*.{jsx,tsx}']
 const TEST_FILES = ['**/*.{test,spec}.{js,jsx,ts,tsx}', '**/__tests__/**/*.{js,jsx,ts,tsx}', 'test/**/*.{js,jsx,ts,tsx}']
 const CONFIG_FILES = ['**/*.{config,setup}.{js,cjs,mjs,ts}', 'eslint-*.mjs', 'design-guard.mjs']
+const defaultProject = existsSync('tsconfig.eslint.json') ? 'tsconfig.eslint.json' : 'tsconfig.json'
 
 const ignores = [
   '**/.next/**',
@@ -136,7 +138,7 @@ function typedConfigs() {
       ...config.languageOptions,
       parserOptions: {
         ...config.languageOptions?.parserOptions,
-        projectService: { allowDefaultProject: ['*.mjs', '*.ts', 'test/*.ts'], defaultProject: 'tsconfig.eslint.json' },
+        projectService: { allowDefaultProject: ['*.mjs', '*.ts', 'test/*.ts'], defaultProject },
         tsconfigRootDir: process.cwd(),
       },
     },
