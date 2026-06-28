@@ -17,22 +17,22 @@ afterEach(() => {
 
 describe('resolveChannels', () => {
   it('defaults to telegram for any app/level', () => {
-    expect(resolveChannels('vantage', 'info')).toEqual(['telegram'])
+    expect(resolveChannels('finpulse', 'info')).toEqual(['telegram'])
   })
 
   it('honors per-app routing and minLevel', () => {
     publishNotifySettings(
       NOTIFY_SETTINGS_SCHEMA.parse({
         routes: [
-          { app: 'vantage', minLevel: 'warn', channels: ['telegram', 'signal'] },
+          { app: 'finpulse', minLevel: 'warn', channels: ['telegram', 'signal'] },
           { minLevel: 'error', channels: ['email'] },
         ],
       }),
     )
     _clearCache()
-    expect(resolveChannels('vantage', 'info').sort()).toEqual([]) // below minLevel warn
-    expect(resolveChannels('vantage', 'warn').sort()).toEqual(['signal', 'telegram'])
-    expect(resolveChannels('vantage', 'error').sort()).toEqual(['email', 'signal', 'telegram'])
+    expect(resolveChannels('finpulse', 'info').sort()).toEqual([]) // below minLevel warn
+    expect(resolveChannels('finpulse', 'warn').sort()).toEqual(['signal', 'telegram'])
+    expect(resolveChannels('finpulse', 'error').sort()).toEqual(['email', 'signal', 'telegram'])
   })
 
   it('suppresses non-error notifications during quiet hours but lets errors through', () => {

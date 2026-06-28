@@ -1,6 +1,6 @@
 # @niyi/platform
 
-Shared control-plane library for the sibling apps (LifeOS, HealthPulse, Vantage,
+Shared control-plane library for the sibling apps (LifeOS, HealthPulse, FinPulse,
 PropertyPulse) and the auth-hub. Single source of truth for:
 
 - **`@niyi/platform/ai`** — Anthropic + Gemini providers with provider preference,

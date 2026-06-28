@@ -16,7 +16,7 @@ function makeReq(
 
 const PROXY = { host: 'media002.tailc29663.ts.net', proto: 'https' }
 const opts: PulseAuthGateOptions = {
-  basePath: '/vantage',
+  basePath: '/finpulse',
   publicPrefixes: ['/api/health', '/_next', '/favicon'],
   publicGetPrefixes: ['/wisdom/'],
 }
@@ -55,7 +55,7 @@ describe('pulseAuthGate', () => {
     const u = new URL(loc)
     expect(u.origin).toBe('https://media002.tailc29663.ts.net')
     expect(u.pathname).toBe('/login')
-    expect(u.searchParams.get('next')).toBe('https://media002.tailc29663.ts.net/vantage/dashboard')
+    expect(u.searchParams.get('next')).toBe('https://media002.tailc29663.ts.net/finpulse/dashboard')
   })
 
   it('falls back to the configured hub URL when not behind a proxy', () => {

@@ -8,7 +8,7 @@ import { NextResponse, type NextRequest } from 'next/server'
 
 export interface PulseAuthGateOptions {
   /**
-   * The app's Next.js basePath, e.g. '/vantage'. Used to build the basePath-aware
+   * The app's Next.js basePath, e.g. '/finpulse'. Used to build the basePath-aware
    * `next` return URL. Defaults to `request.nextUrl.basePath`.
    */
   basePath?: string

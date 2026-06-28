@@ -165,10 +165,10 @@ describe('cascade telemetry', () => {
     noAnon()
     const seen: AiCallRecord[] = []
     setAiTelemetrySink((r) => seen.push(r))
-    await resolveAiProvider()!.generateText({ prompt: 'hi', app: 'vantage', purpose: 'digest', userId: 'u9' })
+    await resolveAiProvider()!.generateText({ prompt: 'hi', app: 'finpulse', purpose: 'digest', userId: 'u9' })
     expect(seen).toHaveLength(1)
     expect(seen[0]).toMatchObject({
-      app: 'vantage',
+      app: 'finpulse',
       purpose: 'digest',
       userId: 'u9',
       caller: 'cascade',

@@ -134,7 +134,7 @@ export type Revocations = z.infer<typeof REVOCATIONS_SCHEMA>
 // consumed by every surface (the app's own web sidebar + ⌘K, the unified mobile
 // shell's per-app tabs, the iPad sidebar) so they can't drift. `group` buckets the
 // item in grouped surfaces (free-form per app, e.g. 'money'|'wealth'|'insights' for
-// Vantage); null = ungrouped/chrome. `icon` = lucide name (web), `emoji` = glyph
+// FinPulse); null = ungrouped/chrome. `icon` = lucide name (web), `emoji` = glyph
 // (mobile). `frequencyRank` orders within a surface (lower = earlier). `surfaces`
 // limits where it appears; `tab` marks the (≤5) phone bottom tabs.
 export const NAV_ITEM_SCHEMA = z.object({

@@ -40,7 +40,7 @@ export interface AiCallRecord {
   id: string
   /** ISO-8601 timestamp of the attempt. */
   ts: string
-  /** Originating app (e.g. 'vantage'); defaults from env APP_NAME. */
+  /** Originating app (e.g. 'finpulse'); defaults from env APP_NAME. */
   app: string
   /** End-user the call was made for, if any. */
   userId?: string | null
