@@ -9,7 +9,8 @@
   "include": [
     "src/**/*.ts",
     "test/**/*.ts",
-    "*.mjs"
+    "*.mjs",
+    "vitest.config.ts"
   ],
   "exclude": [
     "node_modules",

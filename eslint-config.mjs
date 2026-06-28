@@ -138,7 +138,7 @@ function typedConfigs() {
       ...config.languageOptions,
       parserOptions: {
         ...config.languageOptions?.parserOptions,
-        projectService: { allowDefaultProject: ['*.mjs', '*.ts', 'test/*.ts'], defaultProject },
+        projectService: { allowDefaultProject: ['*.mjs', '*.cjs', '*.js'], defaultProject },
         tsconfigRootDir: process.cwd(),
       },
     },
