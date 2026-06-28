@@ -76,13 +76,15 @@ function scan(file) {
     if (FONT_PX.test(line)) violations.push(`${file}:${n}  arbitrary font px — use text-xs/sm/base/lg/...`)
     if (navEligible) {
       let m
+      // Scan the comment-stripped line so commented-out examples (e.g. a doc
+      // comment showing `window.location.href = '/...'`) aren't flagged.
       const tagRe = new RegExp(NAV_TAG_OPEN.source, 'g')
-      while ((m = tagRe.exec(raw))) lastTag = m[1] // last opening tag on this line wins
-      const ha = HREF_ACTION.exec(raw)
+      while ((m = tagRe.exec(line))) lastTag = m[1] // last opening tag on this line wins
+      const ha = HREF_ACTION.exec(line)
       if (ha && (lastTag === 'a' || lastTag === 'form') && isUnsafePath(ha[1])) {
         violations.push(`${file}:${n}  basePath-unsafe <${lastTag}> path "${ha[1]}" drops '${BASE_PATH}' and 404s — use next/link <Link> (auto-prefixed) or prefix the basePath`)
       }
-      const lm = LOC_ASSIGN.exec(raw)
+      const lm = LOC_ASSIGN.exec(line)
       if (lm) {
         const p = lm[1] || lm[2] || lm[3]
         if (isUnsafePath(p)) violations.push(`${file}:${n}  basePath-unsafe location nav to "${p}" drops '${BASE_PATH}' and 404s — use router.push (auto-prefixed)`)
