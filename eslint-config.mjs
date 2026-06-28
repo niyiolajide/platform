@@ -72,8 +72,8 @@ const designRules = {
   }],
   'no-restricted-syntax': ['error',
     {
-      selector: "JSXAttribute[name.name='style']",
-      message: 'Avoid inline style={{}}; use @niyi/ui primitives and semantic tokens. Charts and computed dimensions need a documented exception.',
+      selector: "JSXAttribute[name.name='style'] > JSXExpressionContainer > ObjectExpression",
+      message: 'Avoid inline style={{}}; use design-system primitives, StyleSheet references, and semantic tokens. Charts and computed dimensions need a documented exception.',
     },
     {
       selector: "JSXAttribute[name.name='className'] Literal[value=/hover:-translate/]",
