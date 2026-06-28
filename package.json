@@ -1,6 +1,6 @@
 {
   "name": "@niyi/platform",
-  "version": "0.4.1",
+  "version": "0.4.2",
   "description": "Shared control-plane library for the sibling apps: AI providers, notifications, the control-bundle file-bus, and the edge auth gate.",
   "license": "UNLICENSED",
   "repository": "github:niyiolajide/platform",
