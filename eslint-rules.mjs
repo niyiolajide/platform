@@ -1,3 +1,6 @@
+import { existsSync, readFileSync } from 'node:fs'
+import { join } from 'node:path'
+
 const schedulerPackages = new Set(['node-cron', 'cron', 'node-schedule', 'agenda'])
 const siblingUrlPattern =
   /\b(?:https?:\/\/)?(?:localhost|127\.0\.0\.1|host\.docker\.internal):(?:3000|3001|3003|3004|3005|3007|3008|3009|4000)\b/
@@ -30,6 +33,23 @@ function matchesAny(patterns, value) {
   return patterns.some((pattern) => pattern.test(value))
 }
 
+let packageNameCache
+function packageName() {
+  if (packageNameCache !== undefined) {return packageNameCache}
+  const packageFile = join(process.cwd(), 'package.json')
+  if (!existsSync(packageFile)) {
+    packageNameCache = null
+    return packageNameCache
+  }
+  try {
+    const raw = JSON.parse(readFileSync(packageFile, 'utf8'))
+    packageNameCache = typeof raw.name === 'string' ? raw.name : null
+  } catch {
+    packageNameCache = null
+  }
+  return packageNameCache
+}
+
 function configuredPatterns(context, defaults) {
   return [
     ...defaults,
@@ -54,6 +74,7 @@ function isAllowedSiblingUrlFile(context) {
 
 function isAllowedSchedulerFile(context) {
   const file = normalizePath(filenameOf(context))
+  if (packageName() === 'controlplane' && /(^|\/)src\/worker\/scheduler\.ts$/.test(file)) {return true}
   return matchesAny(configuredPatterns(context, [
     /\/controlplane\/src\/worker\/scheduler\.ts$/,
     /\/homepulse\//,
