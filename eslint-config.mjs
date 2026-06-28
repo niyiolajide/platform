@@ -47,15 +47,13 @@ export default [
     settings: { react: { version: "detect" } },
     rules: {
       /* 1. Anti-overengineering & complexity limits.
-         WARN, not error: these guide toward modular NEW code, but mature apps have
-         large legacy components — erroring tree-wide would make every lint/commit
-         fail until a hundreds-of-files refactor. Warnings stay loud in editor + CI
-         without blocking; burn the legacy debt down incrementally, then promote. */
-      "max-lines-per-function": ["warn", { max: 50, skipBlankLines: true, skipComments: true }],
-      "max-lines": ["warn", { max: 250, skipBlankLines: true, skipComments: true }],
-      "max-params": ["warn", { max: 2 }],
-      "max-depth": ["warn", { max: 3 }],
-      "max-nested-callbacks": ["warn", { max: 2 }],
+         Hard errors: all apps that adopt this shared config must split large,
+         deeply nested, or wide-argument modules before they land. */
+      "max-lines-per-function": ["error", { max: 50, skipBlankLines: true, skipComments: true }],
+      "max-lines": ["error", { max: 250, skipBlankLines: true, skipComments: true }],
+      "max-params": ["error", { max: 4 }],
+      "max-depth": ["error", { max: 3 }],
+      "max-nested-callbacks": ["error", { max: 2 }],
 
       /* 2. Styling-bug guard (raw colors; token drift handled by design-guard.mjs) */
       "no-restricted-syntax": [
