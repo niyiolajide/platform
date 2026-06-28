@@ -14,8 +14,7 @@ export function isAnthropicConfigured(): boolean {
 export function getAnthropic(): Anthropic {
   // Explicit timeout + a single in-SDK retry: the cascade handles cross-provider
   // failover, so we fail fast to the next step rather than retrying here for long.
-  if (!client)
-    client = new Anthropic({ apiKey: keys.anthropicApiKey(), timeout: 60_000, maxRetries: 1 })
+  client ??= new Anthropic({ apiKey: keys.anthropicApiKey(), timeout: 60_000, maxRetries: 1 })
   return client
 }
 
@@ -53,7 +52,7 @@ export const anthropicAdapter: ProviderAdapter = {
     )
     const usage = anthropicUsage(resp)
     const tu = resp.content.find((b) => b.type === 'tool_use')
-    if (!tu || tu.type !== 'tool_use') return { content: null, usage }
+    if (tu?.type !== 'tool_use') {return { content: null, usage }}
     return { content: tu.input as Record<string, unknown>, usage }
   },
 
@@ -79,5 +78,5 @@ export const anthropicAdapter: ProviderAdapter = {
 
 function anthropicUsage(resp: Anthropic.Message): TokenUsage {
   const u = resp.usage
-  return { tokensIn: u?.input_tokens ?? undefined, tokensOut: u?.output_tokens ?? undefined }
+  return { tokensIn: u.input_tokens, tokensOut: u.output_tokens }
 }

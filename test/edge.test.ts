@@ -7,10 +7,10 @@ function makeReq(
   o: { method?: string; cookie?: string; bearer?: string; host?: string; proto?: string } = {},
 ) {
   const headers = new Headers()
-  if (o.cookie) headers.set('cookie', `pulse-token=${o.cookie}`)
-  if (o.bearer) headers.set('authorization', `Bearer ${o.bearer}`)
-  if (o.host) headers.set('x-forwarded-host', o.host)
-  if (o.proto) headers.set('x-forwarded-proto', o.proto)
+  if (o.cookie) {headers.set('cookie', `pulse-token=${o.cookie}`)}
+  if (o.bearer) {headers.set('authorization', `Bearer ${o.bearer}`)}
+  if (o.host) {headers.set('x-forwarded-host', o.host)}
+  if (o.proto) {headers.set('x-forwarded-proto', o.proto)}
   return new NextRequest(`https://backend.internal${path}`, { method: o.method ?? 'GET', headers })
 }
 

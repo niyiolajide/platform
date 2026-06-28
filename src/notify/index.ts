@@ -31,22 +31,22 @@ export function resolveChannels(app: string, level: NotifyLevel): NotifyChannel[
   const cfg = readNotifySettings()
   if (cfg.quietHours && level !== 'error') {
     const hour = new Date().getHours()
-    if (inQuietHours(cfg.quietHours.start, cfg.quietHours.end, hour)) return []
+    if (inQuietHours(cfg.quietHours.start, cfg.quietHours.end, hour)) {return []}
   }
   const matching = cfg.routes.filter(
     (r) => (!r.app || r.app === app) && LEVEL_RANK[level] >= LEVEL_RANK[r.minLevel],
   )
   const set = new Set<NotifyChannel>()
-  for (const r of matching) for (const c of r.channels) set.add(c)
+  for (const r of matching) {for (const c of r.channels) {set.add(c)}}
   return [...set]
 }
 
 // ── Channel senders (never throw) ─────────────────────────────────────────────
 
 async function sendTelegram(text: string): Promise<boolean> {
-  const token = process.env.TELEGRAM_OPS_BOT_TOKEN || process.env.TELEGRAM_BOT_TOKEN
-  const chat = process.env.TELEGRAM_OPS_CHAT_ID || process.env.TELEGRAM_CHAT_ID
-  if (!token || !chat) return false
+  const token = process.env.TELEGRAM_OPS_BOT_TOKEN ?? process.env.TELEGRAM_BOT_TOKEN
+  const chat = process.env.TELEGRAM_OPS_CHAT_ID ?? process.env.TELEGRAM_CHAT_ID
+  if (token == null || token === '' || chat == null || chat === '') {return false}
   try {
     const res = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
       method: 'POST',
@@ -62,13 +62,13 @@ async function sendTelegram(text: string): Promise<boolean> {
 }
 
 async function sendSignal(text: string): Promise<boolean> {
-  const apiUrl = (process.env.SIGNAL_API_URL || '').replace(/\/$/, '')
+  const apiUrl = (process.env.SIGNAL_API_URL ?? '').replace(/\/$/, '')
   const number = process.env.SIGNAL_NUMBER
-  const recipients = (process.env.SIGNAL_DEFAULT_RECIPIENT || '')
+  const recipients = (process.env.SIGNAL_DEFAULT_RECIPIENT ?? '')
     .split(',')
     .map((r) => r.trim())
     .filter(Boolean)
-  if (!apiUrl || !number || recipients.length === 0) return false
+  if (apiUrl === '' || number == null || number === '' || recipients.length === 0) {return false}
   try {
     const res = await fetch(`${apiUrl}/v2/send`, {
       method: 'POST',
@@ -88,7 +88,7 @@ async function sendEmail(subject: string, text: string): Promise<boolean> {
   // app's own mailer when present); here we no-op gracefully if unconfigured.
   const to = process.env.NOTIFY_EMAIL_TO
   const apiUrl = process.env.NOTIFY_EMAIL_WEBHOOK // optional simple webhook relay
-  if (!to || !apiUrl) return false
+  if (to == null || to === '' || apiUrl == null || apiUrl === '') {return false}
   try {
     const res = await fetch(apiUrl, {
       method: 'POST',
@@ -114,10 +114,18 @@ export async function notify(input: NotifyInput): Promise<Record<NotifyChannel, 
   const plain = input.body ? `${input.title}\n${input.body}` : input.title
   const result: Record<string, boolean> = {}
   await Promise.all(
-    channels.map(async (c) => {
-      if (c === 'telegram') result.telegram = await sendTelegram(text)
-      else if (c === 'signal') result.signal = await sendSignal(plain)
-      else if (c === 'email') result.email = await sendEmail(`[${input.app}] ${input.title}`, plain)
+    channels.map(async (c): Promise<void> => {
+      switch (c) {
+        case 'telegram':
+          result.telegram = await sendTelegram(text)
+          break
+        case 'signal':
+          result.signal = await sendSignal(plain)
+          break
+        case 'email':
+          result.email = await sendEmail(`[${input.app}] ${input.title}`, plain)
+          break
+      }
     }),
   )
   // Delivery is best-effort (never throws), but a notification that fails on EVERY
@@ -129,14 +137,14 @@ export async function notify(input: NotifyInput): Promise<Record<NotifyChannel, 
       '[notify] all resolved channels failed — notification NOT delivered',
     )
   }
-  return result as Record<NotifyChannel, boolean>
+  return result
 }
 
 export function isNotifyConfigured(): boolean {
-  return Boolean(
-    process.env.TELEGRAM_OPS_BOT_TOKEN ||
-      process.env.TELEGRAM_BOT_TOKEN ||
-      process.env.SIGNAL_API_URL ||
-      process.env.NOTIFY_EMAIL_WEBHOOK,
-  )
+  return [
+    process.env.TELEGRAM_OPS_BOT_TOKEN,
+    process.env.TELEGRAM_BOT_TOKEN,
+    process.env.SIGNAL_API_URL,
+    process.env.NOTIFY_EMAIL_WEBHOOK,
+  ].some((value) => value != null && value !== '')
 }

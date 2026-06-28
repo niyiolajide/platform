@@ -29,7 +29,10 @@ function b64urlDecode(s) {
 }
 function b64urlJson(s) {
     try {
-        return JSON.parse(b64urlDecode(s).toString('utf8'));
+        const parsed = JSON.parse(b64urlDecode(s).toString('utf8'));
+        return parsed !== null && typeof parsed === 'object' && !Array.isArray(parsed)
+            ? parsed
+            : null;
     }
     catch {
         return null;
@@ -49,8 +52,9 @@ function verifyRs256(signingInput, sig, kid) {
     const data = Buffer.from(signingInput);
     for (const k of toTry) {
         try {
-            if (crypto_1.default.verify('RSA-SHA256', data, k.pem, sig))
+            if (crypto_1.default.verify('RSA-SHA256', data, k.pem, sig)) {
                 return true;
+            }
         }
         catch {
             // malformed key PEM — skip
@@ -64,44 +68,63 @@ function verifyRs256(signingInput, sig, kid) {
  * optional `expectedAud`, and `jti` not revoked. Returns the payload or null.
  */
 function verifyPulseToken(token, opts = {}) {
-    if (!token)
+    if (!token) {
         return null;
+    }
     const parts = token.split('.');
-    if (parts.length !== 3)
+    if (parts.length !== 3) {
         return null;
+    }
     const [headerB64, payloadB64, sigB64] = parts;
     const header = b64urlJson(headerB64);
-    if (!header)
+    if (!header) {
         return null;
+    }
     const signingInput = `${headerB64}.${payloadB64}`;
     const sig = b64urlDecode(sigB64);
     // RS256-only (Stage 4): HS256 is retired — ControlPlane is the sole minter via its
     // private key; apps verify with the published public key(s) and cannot forge.
-    if (header.alg !== 'RS256')
+    if (header.alg !== 'RS256') {
         return null;
-    if (!verifyRs256(signingInput, sig, header.kid))
+    }
+    if (!verifyRs256(signingInput, sig, header.kid)) {
         return null;
-    const payload = b64urlJson(payloadB64);
-    if (!payload || payload.iss !== 'controlplane')
+    }
+    const payload = parsePulsePayload(b64urlJson(payloadB64));
+    if (payload?.iss !== 'controlplane') {
         return null;
+    }
     const now = Date.now() / 1000;
     // Require an expiry — a token with no `exp` would be valid forever and is unprunable
     // from the revocation denylist; reject it outright. (Every ControlPlane minter sets exp.)
     // Strict (no skew): never extend a token's life past its stated expiry.
-    if (typeof payload.exp !== 'number' || now > payload.exp)
+    if (typeof payload.exp !== 'number' || now > payload.exp) {
         return null;
+    }
     // Enforce not-before when present (small skew tolerance for a just-minted token whose
     // nbf is marginally ahead of this host's clock).
-    if (typeof payload.nbf === 'number' && now < payload.nbf - CLOCK_SKEW_S)
+    if (typeof payload.nbf === 'number' && now < payload.nbf - CLOCK_SKEW_S) {
         return null;
+    }
     // Optional audience scoping — reject a token minted for a different service.
     if (opts.expectedAud) {
         const aud = payload.aud;
         const ok = Array.isArray(aud) ? aud.includes(opts.expectedAud) : aud === opts.expectedAud;
-        if (!ok)
+        if (!ok) {
             return null;
+        }
     }
-    if ((0, store_1.isRevoked)(payload.jti))
+    if ((0, store_1.isRevoked)(payload.jti)) {
         return null;
+    }
     return payload;
+}
+function parsePulsePayload(raw) {
+    if (raw == null) {
+        return null;
+    }
+    if (typeof raw.userId !== 'string' || typeof raw.email !== 'string' || typeof raw.iss !== 'string') {
+        return null;
+    }
+    return raw;
 }

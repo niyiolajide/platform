@@ -28,4 +28,6 @@ export declare function runIsolated<TResult = unknown, TPayload = unknown>(opts:
  * the parent's payload, runs `handler` exactly once, sends the result back, and exits so
  * all of this process's memory is reclaimed. Any throw is serialized back to the parent.
  */
-export declare function registerIsolatedHandler<TPayload = unknown, TResult = unknown>(handler: (payload: TPayload) => TResult | Promise<TResult>): void;
+export declare function registerIsolatedHandler<TPayload = unknown, TResult = unknown>(handler: ((payload: TPayload) => TResult | Promise<TResult>) & {
+    readonly __payloadType?: TPayload;
+}): void;

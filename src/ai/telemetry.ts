@@ -109,14 +109,14 @@ export function hasAiTelemetrySink(): boolean {
  * record gives prompt+response a consistent token mapping within that record.
  */
 export function recordAiCall(record: AiCallRecord): void {
-  if (!sink) return
+  if (!sink) {return}
   try {
     const r = { ...record }
     if (r.prompt != null || r.response != null) {
       const anon = createAnonymizer()
       // Mask prompt first so its tokens are reused in the response mask (stable map).
-      if (r.prompt != null) r.prompt = anon.mask(r.prompt)
-      if (r.response != null) r.response = anon.mask(r.response)
+      if (r.prompt != null) {r.prompt = anon.mask(r.prompt)}
+      if (r.response != null) {r.response = anon.mask(r.response)}
     }
     sink(r)
   } catch (err) {
@@ -154,5 +154,5 @@ export function shipBuffer(
   batchSize: number = 200,
   key: string = AI_TELEMETRY_BUFFER_KEY,
 ): Promise<number> {
-  return drainBuffer<AiCallRecord>(redis, postFn, batchSize, key)
+  return drainBuffer<AiCallRecord>({ redis, postFn, batchSize, key })
 }

@@ -18,144 +18,148 @@ const TIMEOUT_MS = {
     anthropic: 60000,
     ollama: 180000,
 };
-function withTimeout(fn, ms) {
+async function withTimeout(fn, ms) {
     const ac = new AbortController();
-    return new Promise((resolve, reject) => {
-        const timer = setTimeout(() => {
+    let timer;
+    const timeout = new Promise((_resolve, reject) => {
+        timer = setTimeout(() => {
             ac.abort();
             reject(new Error(`attempt timed out after ${ms}ms`));
         }, ms);
-        fn(ac.signal).then((v) => {
-            clearTimeout(timer);
-            resolve(v);
-        }, (e) => {
-            clearTimeout(timer);
-            reject(e);
-        });
     });
+    try {
+        return await Promise.race([fn(ac.signal), timeout]);
+    }
+    finally {
+        if (timer != null) {
+            clearTimeout(timer);
+        }
+    }
 }
 // Build the ordered, configured step list for a tier. An explicit `pref` provider
 // is stably hoisted to the front; `only` restricts to a single provider (used by
 // the historical single-provider `getProvider`).
 function buildSteps(tier, pref, only) {
-    let steps = (0, store_1.readAiSettings)().cascades[tier].filter((s) => (0, registry_1.getAdapter)(s.provider)?.configured());
-    if (only)
+    let steps = (0, store_1.readAiSettings)().cascades[tier].filter((s) => (0, registry_1.getAdapter)(s.provider).configured());
+    if (only) {
         steps = steps.filter((s) => s.provider === only);
+    }
     if (pref) {
         const p = pref;
         steps = [...steps.filter((s) => s.provider === p), ...steps.filter((s) => s.provider !== p)];
     }
     return steps;
 }
-async function runCascade(tier, kind, req, pref, onModel, only) {
+function first(items) {
+    const [value] = items;
+    return value;
+}
+function makeTelemetryState(settings, tier, req, anon) {
+    return {
+        enabled: settings.logAiCalls && (0, telemetry_1.hasAiTelemetrySink)(),
+        logPayloads: settings.logPayloads,
+        app: req.app ?? process.env.APP_NAME ?? 'unknown',
+        purpose: req.purpose ?? 'unknown',
+        userId: req.userId ?? null,
+        tier,
+        anon,
+    };
+}
+function emitAttempt(args) {
+    const { telemetry, step, attempt, status, ms, prompt, response, usage, error } = args;
+    if (!telemetry.enabled) {
+        return;
+    }
+    const rec = {
+        id: (0, telemetry_1.ulid)(), ts: new Date().toISOString(), app: telemetry.app, userId: telemetry.userId,
+        purpose: telemetry.purpose, caller: 'cascade', tier: telemetry.tier, provider: step.provider,
+        model: step.model, attempt, status, error: error ?? null, latencyMs: ms,
+        ...(usage?.tokensIn != null ? { tokensIn: usage.tokensIn } : {}),
+        ...(usage?.tokensOut != null ? { tokensOut: usage.tokensOut } : {}),
+    };
+    const cost = (0, models_1.estimateCostCents)(step.model, usage?.tokensIn, usage?.tokensOut);
+    if (cost != null) {
+        rec.costCentsEst = cost;
+    }
+    if (telemetry.logPayloads) {
+        rec.prompt = prompt;
+        if (response != null) {
+            rec.response = response;
+        }
+    }
+    const nameCandidates = telemetry.anon?.possibleUnmaskedNames() ?? [];
+    if (nameCandidates.length > 0) {
+        rec.unmaskedNameCandidates = nameCandidates;
+    }
+    (0, telemetry_1.recordAiCall)(rec);
+}
+function callStep(args) {
+    const adapter = (0, registry_1.getAdapter)(args.step.provider);
+    if (args.kind === 'structured') {
+        const req = args.req;
+        return adapter.callStructured(args.step.model, {
+            prompt: args.prompt, system: args.system, maxTokens: req.maxTokens,
+            toolName: req.toolName, toolDescription: req.toolDescription, jsonSchema: req.jsonSchema,
+        }, args.signal);
+    }
+    return adapter.callText(args.step.model, { prompt: args.prompt, system: args.system, maxTokens: args.req.maxTokens }, args.signal);
+}
+function restoreOutput(kind, out, anon) {
+    if (anon == null) {
+        return out;
+    }
+    return kind === 'structured' ? anon.unmaskDeep(out) : anon.unmask(out);
+}
+async function runAttempt(args) {
+    const startedAt = Date.now();
+    try {
+        const result = await withTimeout((signal) => callStep({ ...args, signal }), TIMEOUT_MS[args.step.provider]);
+        const ms = Date.now() - startedAt;
+        const out = result.content;
+        if (out == null) {
+            (0, config_1.getLogger)().warn({ tier: args.tier, kind: args.kind, provider: args.step.provider, model: args.step.model, attempt: args.attempt, ms, reason: 'empty', willFallback: args.willFallback }, '[ai/cascade] empty response');
+            emitAttempt({ telemetry: args.telemetry, step: args.step, attempt: args.attempt, status: 'empty', ms, prompt: args.prompt, usage: result.usage });
+            return null;
+        }
+        args.onModel(args.tier, args.step.model);
+        (0, config_1.getLogger)().info({ tier: args.tier, kind: args.kind, provider: args.step.provider, model: args.step.model, attempt: args.attempt, ms }, '[ai/cascade] answered');
+        const restored = restoreOutput(args.kind, out, args.anonForRestore);
+        const response = typeof restored === 'string' ? restored : JSON.stringify(restored);
+        emitAttempt({ telemetry: args.telemetry, step: args.step, attempt: args.attempt, status: 'ok', ms, prompt: args.prompt, response, usage: result.usage });
+        return restored;
+    }
+    catch (err) {
+        const ms = Date.now() - startedAt;
+        const error = err instanceof Error ? err.message : String(err);
+        (0, config_1.getLogger)().warn({ err, tier: args.tier, kind: args.kind, provider: args.step.provider, model: args.step.model, attempt: args.attempt, ms, willFallback: args.willFallback }, '[ai/cascade] attempt failed');
+        emitAttempt({ telemetry: args.telemetry, step: args.step, attempt: args.attempt, status: 'error', ms, prompt: args.prompt, error });
+        return null;
+    }
+}
+async function runCascade(args) {
+    const { tier, kind, req, pref, only, onModel } = args;
     const settings = (0, store_1.readAiSettings)();
     const steps = buildSteps(tier, pref, only);
-    if (steps.length === 0)
+    if (steps.length === 0) {
         return null;
-    const logger = (0, config_1.getLogger)();
-    // Telemetry is read live (mirrors anonymizeRequests). Only build records when a
-    // sink is installed AND logging is on — otherwise the cascade is unchanged.
-    const telemetryOn = settings.logAiCalls && (0, telemetry_1.hasAiTelemetrySink)();
-    const logPayloads = settings.logPayloads;
-    const app = req.app || process.env.APP_NAME || 'unknown';
-    const purpose = req.purpose || 'unknown';
-    const userId = req.userId ?? null;
+    }
     // Anonymize ONCE, reused across all cloud attempts. Local (Ollama) steps keep the
     // original text — data never leaves the LAN, so masking would only cost fidelity.
     const anon = settings.anonymizeRequests ? (0, anonymize_1.createAnonymizer)() : null;
     const maskedPrompt = anon ? anon.mask(req.prompt) : req.prompt;
     const maskedSystem = anon && req.system != null ? anon.mask(req.system) : req.system;
-    // Emit a record for this attempt. Best-effort: recordAiCall anonymizes the
-    // payloads itself (idempotent) and never throws. We pass the masked prompt when
-    // masking applied to this step, else the raw prompt (recordAiCall masks it anyway).
-    const emit = (step, attemptIdx, status, ms, promptSent, responseText, usage, error) => {
-        if (!telemetryOn)
-            return;
-        const rec = {
-            id: (0, telemetry_1.ulid)(),
-            ts: new Date().toISOString(),
-            app,
-            userId,
-            purpose,
-            caller: 'cascade',
-            tier,
-            provider: step.provider,
-            model: step.model,
-            attempt: attemptIdx,
-            status,
-            error: error ?? null,
-            latencyMs: ms,
-            ...(usage?.tokensIn != null ? { tokensIn: usage.tokensIn } : {}),
-            ...(usage?.tokensOut != null ? { tokensOut: usage.tokensOut } : {}),
-        };
-        const cost = (0, models_1.estimateCostCents)(step.model, usage?.tokensIn, usage?.tokensOut);
-        if (cost != null)
-            rec.costCentsEst = cost;
-        if (logPayloads) {
-            rec.prompt = promptSent;
-            if (responseText != null)
-                rec.response = responseText;
-        }
-        // Allow-list recall-gap signal for triage in AI Logs — attached independent of
-        // logPayloads (it's the triage deliverable, not bulk payload text). Empty → omit.
-        const nameCandidates = anon?.possibleUnmaskedNames();
-        if (nameCandidates && nameCandidates.length)
-            rec.unmaskedNameCandidates = nameCandidates;
-        (0, telemetry_1.recordAiCall)(rec);
-    };
-    for (let i = 0; i < steps.length; i++) {
-        const step = steps[i];
+    const telemetry = makeTelemetryState(settings, tier, req, anon);
+    for (const [i, step] of steps.entries()) {
         const adapter = (0, registry_1.getAdapter)(step.provider);
-        const useMask = anon != null && !adapter.local;
-        const willFallback = i < steps.length - 1;
+        const useMask = anon != null && adapter.local !== true;
         const prompt = useMask ? maskedPrompt : req.prompt;
         const system = useMask ? maskedSystem : req.system;
-        const startedAt = Date.now();
-        try {
-            const result = await withTimeout((signal) => {
-                if (kind === 'structured') {
-                    const r = req;
-                    const attempt = {
-                        prompt,
-                        system,
-                        maxTokens: r.maxTokens,
-                        toolName: r.toolName,
-                        toolDescription: r.toolDescription,
-                        jsonSchema: r.jsonSchema,
-                    };
-                    return adapter.callStructured(step.model, attempt, signal);
-                }
-                const attempt = { prompt, system, maxTokens: req.maxTokens };
-                return adapter.callText(step.model, attempt, signal);
-            }, TIMEOUT_MS[step.provider]);
-            const ms = Date.now() - startedAt;
-            const out = result.content;
-            if (out != null) {
-                onModel(tier, step.model);
-                logger.info({ tier, kind, provider: step.provider, model: step.model, attempt: i + 1, ms }, '[ai/cascade] answered');
-                const restored = !useMask || !anon
-                    ? out
-                    : kind === 'structured'
-                        ? anon.unmaskDeep(out)
-                        : anon.unmask(out);
-                // Log the response as text (stringify structured output). The masked prompt
-                // that left the host (`prompt`) is what we record; recordAiCall masks again
-                // (idempotent) for safety on the raw path.
-                const responseText = typeof restored === 'string' ? restored : JSON.stringify(restored);
-                emit(step, i + 1, 'ok', ms, prompt, responseText, result.usage);
-                return restored;
-            }
-            logger.warn({ tier, kind, provider: step.provider, model: step.model, attempt: i + 1, ms, reason: 'empty', willFallback }, '[ai/cascade] empty response');
-            emit(step, i + 1, 'empty', ms, prompt, null, result.usage);
-        }
-        catch (err) {
-            const ms = Date.now() - startedAt;
-            const msg = err instanceof Error ? err.message : String(err);
-            logger.warn({ err, tier, kind, provider: step.provider, model: step.model, attempt: i + 1, ms, willFallback }, '[ai/cascade] attempt failed');
-            emit(step, i + 1, 'error', ms, prompt, null, undefined, msg);
+        const out = await runAttempt({ tier, kind, req, step, attempt: i + 1, willFallback: i < steps.length - 1, prompt, system, telemetry, onModel, anonForRestore: useMask ? anon : null });
+        if (out != null) {
+            return out;
         }
     }
-    logger.warn({ tier, kind, attempts: steps.length }, '[ai/cascade] all steps failed');
+    (0, config_1.getLogger)().warn({ tier, kind, attempts: steps.length }, '[ai/cascade] all steps failed');
     return null;
 }
 // ── Facade ────────────────────────────────────────────────────────────────────
@@ -167,26 +171,26 @@ function makeProvider(pref, only) {
     const onModel = (tier, model) => {
         last[tier] = model;
     };
-    const firstStep = () => buildSteps('main', pref, only)[0] ?? buildSteps('fast', pref, only)[0];
+    const firstStep = () => first(buildSteps('main', pref, only)) ?? first(buildSteps('fast', pref, only));
     return {
         get kind() {
             return only ?? firstStep()?.provider ?? 'anthropic';
         },
         get label() {
             const k = only ?? firstStep()?.provider;
-            return k ? (0, registry_1.getAdapter)(k).label : 'AI';
+            return k != null ? (0, registry_1.getAdapter)(k).label : 'AI';
         },
         configured() {
             return buildSteps('main', pref, only).length > 0 || buildSteps('fast', pref, only).length > 0;
         },
         modelName(which = 'main') {
-            return last[which] ?? buildSteps(which, pref, only)[0]?.model ?? '';
+            return last[which] ?? first(buildSteps(which, pref, only))?.model ?? '';
         },
         async generateStructured(req) {
-            return (await runCascade(req.model ?? 'main', 'structured', req, pref, onModel, only));
+            return (await runCascade({ tier: req.model ?? 'main', kind: 'structured', req, pref, onModel, only }));
         },
         async generateText(req) {
-            return (await runCascade(req.model ?? 'main', 'text', req, pref, onModel, only));
+            return (await runCascade({ tier: req.model ?? 'main', kind: 'text', req, pref, onModel, only }));
         },
     };
 }
@@ -211,23 +215,31 @@ function resolveAiProvider(pref) {
     const p = makeProvider(pref);
     return p.configured() ? p : null;
 }
+function isProviderKind(provider) {
+    return Object.prototype.hasOwnProperty.call(registry_1.ADAPTERS, provider);
+}
 /**
  * One-shot health/latency probe of a specific {provider, model} — backs the Hub's
  * per-step "Test" button. Sends a tiny text request and reports ok + round-trip ms.
  */
 async function probeModel(provider, model, timeoutMs = 20000) {
-    const adapter = (0, registry_1.getAdapter)(provider);
-    if (!adapter)
+    if (!isProviderKind(provider)) {
         return { ok: false, ms: 0, error: `unknown provider '${provider}'` };
-    if (!adapter.configured())
+    }
+    const adapter = (0, registry_1.getAdapter)(provider);
+    if (!adapter.configured()) {
         return { ok: false, ms: 0, error: 'not configured (missing key/endpoint)' };
+    }
     const start = Date.now();
     try {
         const out = await withTimeout((signal) => adapter.callText(model, { prompt: 'Reply with exactly one word: ok', maxTokens: 8 }, signal), timeoutMs);
         const ms = Date.now() - start;
-        return out.content != null ? { ok: true, ms } : { ok: false, ms, error: 'empty response' };
+        if (out.content == null) {
+            return { ok: false, ms, error: 'empty response' };
+        }
+        return { ok: true, ms };
     }
-    catch (e) {
-        return { ok: false, ms: Date.now() - start, error: e instanceof Error ? e.message : String(e) };
+    catch (err) {
+        return { ok: false, ms: Date.now() - start, error: err instanceof Error ? err.message : String(err) };
     }
 }

@@ -43,8 +43,9 @@ exports.MODEL_PRICES = [
 function priceFor(model, at = new Date()) {
     const atIso = at.toISOString().slice(0, 10);
     const candidates = exports.MODEL_PRICES.filter((p) => (model === p.model || model.startsWith(p.model)) && p.since <= atIso);
-    if (candidates.length === 0)
+    if (candidates.length === 0) {
         return null;
+    }
     // Prefer the most specific (longest) model match, then the newest since.
     candidates.sort((a, b) => b.model.length - a.model.length || (a.since < b.since ? 1 : -1));
     return candidates[0];
@@ -55,10 +56,12 @@ function priceFor(model, at = new Date()) {
  */
 function estimateCostCents(model, tokensIn, tokensOut, at = new Date()) {
     const price = priceFor(model, at);
-    if (!price)
+    if (!price) {
         return undefined;
-    if (tokensIn == null && tokensOut == null)
+    }
+    if (tokensIn == null && tokensOut == null) {
         return undefined;
+    }
     const inCents = ((tokensIn ?? 0) / 1000000) * price.per1MInCents;
     const outCents = ((tokensOut ?? 0) / 1000000) * price.per1MOutCents;
     return inCents + outCents;

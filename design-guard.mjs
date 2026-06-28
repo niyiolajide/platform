@@ -27,7 +27,7 @@ function detectBasePath() {
   for (const f of ['next.config.js', 'next.config.mjs']) {
     if (existsSync(f)) {
       const m = readFileSync(f, 'utf8').match(/basePath:\s*['"]([^'"]+)['"]/)
-      if (m) return m[1]
+      if (m) {return m[1]}
     }
   }
   return ''
@@ -36,9 +36,9 @@ const BASE_PATH = detectBasePath()
 
 // An app-absolute string path ("/x") that is NOT already basePath-prefixed and NOT external (//, http).
 function isUnsafePath(p) {
-  if (!BASE_PATH) return false
-  if (!p.startsWith('/') || p.startsWith('//')) return false
-  if (p === BASE_PATH || p.startsWith(BASE_PATH + '/')) return false
+  if (!BASE_PATH) {return false}
+  if (!p.startsWith('/') || p.startsWith('//')) {return false}
+  if (p === BASE_PATH || p.startsWith(BASE_PATH + '/')) {return false}
   return true
 }
 
@@ -50,14 +50,14 @@ const isTest = (f) => /(\.test\.|\.spec\.|__tests__|__mocks__)/.test(f)
 const violations = []
 function walk(dir) {
   for (const e of readdirSync(dir)) {
-    if (e === 'node_modules' || e === '.next' || e === 'dist') continue
+    if (e === 'node_modules' || e === '.next' || e === 'dist') {continue}
     const p = join(dir, e)
     statSync(p).isDirectory() ? walk(p) : scan(p)
   }
 }
 function scan(file) {
   const ext = extname(file)
-  if (!['.tsx', '.ts', '.jsx', '.js', '.css'].includes(ext)) return
+  if (!['.tsx', '.ts', '.jsx', '.js', '.css'].includes(ext)) {return}
   const lines = readFileSync(file, 'utf8').split('\n')
   if (file.includes('/components/ui/') && ext === '.tsx' && FORK_NAMES.has(basename(file, '.tsx'))) {
     violations.push(`${file}:1  forked DS primitive '${basename(file, '.tsx')}' — re-export from @niyi/ui instead of forking`)
@@ -67,19 +67,19 @@ function scan(file) {
   lines.forEach((raw, i) => {
     const n = i + 1
     if (ext === '.css') {
-      if (/@import[^;]*fonts\.googleapis/.test(raw) && OFF_FONTS.test(raw)) violations.push(`${file}:${n}  off-brand font @import — only Plus Jakarta Sans / DM Serif Display / JetBrains Mono`)
-      if (/font-family/.test(raw) && OFF_FONTS.test(raw)) violations.push(`${file}:${n}  off-brand font-family`)
+      if (/@import[^;]*fonts\.googleapis/.test(raw) && OFF_FONTS.test(raw)) {violations.push(`${file}:${n}  off-brand font @import — only Plus Jakarta Sans / DM Serif Display / JetBrains Mono`)}
+      if (/font-family/.test(raw) && OFF_FONTS.test(raw)) {violations.push(`${file}:${n}  off-brand font-family`)}
       return
     }
     const line = raw.replace(/\/\/.*$/, '') // strip line comments (avoids flagging `// neutral-700`)
-    if (PALETTE.test(line)) violations.push(`${file}:${n}  raw palette class — use a semantic token (ink/muted/line/surface/canvas/primary/success/warning/error)`)
-    if (FONT_PX.test(line)) violations.push(`${file}:${n}  arbitrary font px — use text-xs/sm/base/lg/...`)
+    if (PALETTE.test(line)) {violations.push(`${file}:${n}  raw palette class — use a semantic token (ink/muted/line/surface/canvas/primary/success/warning/error)`)}
+    if (FONT_PX.test(line)) {violations.push(`${file}:${n}  arbitrary font px — use text-xs/sm/base/lg/...`)}
     if (navEligible) {
       let m
       // Scan the comment-stripped line so commented-out examples (e.g. a doc
       // comment showing `window.location.href = '/...'`) aren't flagged.
       const tagRe = new RegExp(NAV_TAG_OPEN.source, 'g')
-      while ((m = tagRe.exec(line))) lastTag = m[1] // last opening tag on this line wins
+      while ((m = tagRe.exec(line))) {lastTag = m[1]} // last opening tag on this line wins
       const ha = HREF_ACTION.exec(line)
       if (ha && (lastTag === 'a' || lastTag === 'form') && isUnsafePath(ha[1])) {
         violations.push(`${file}:${n}  basePath-unsafe <${lastTag}> path "${ha[1]}" drops '${BASE_PATH}' and 404s — use next/link <Link> (auto-prefixed) or prefix the basePath`)
@@ -87,7 +87,7 @@ function scan(file) {
       const lm = LOC_ASSIGN.exec(line)
       if (lm) {
         const p = lm[1] || lm[2] || lm[3]
-        if (isUnsafePath(p)) violations.push(`${file}:${n}  basePath-unsafe location nav to "${p}" drops '${BASE_PATH}' and 404s — use router.push (auto-prefixed)`)
+        if (isUnsafePath(p)) {violations.push(`${file}:${n}  basePath-unsafe location nav to "${p}" drops '${BASE_PATH}' and 404s — use router.push (auto-prefixed)`)}
       }
     }
   })

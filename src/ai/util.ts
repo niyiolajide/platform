@@ -2,8 +2,8 @@
 
 /** Extract the first JSON object from model text (tolerant of stray prose). */
 export function parseJsonObject(text: string): Record<string, unknown> | null {
-  const trimmed = (text ?? '').trim()
-  if (!trimmed) return null
+  const trimmed = text.trim()
+  if (!trimmed) {return null}
   const match = trimmed.match(/\{[\s\S]*\}/)
   try {
     return JSON.parse(match ? match[0] : trimmed) as Record<string, unknown>
@@ -14,7 +14,7 @@ export function parseJsonObject(text: string): Record<string, unknown> | null {
 
 /** Strip `<think>…</think>` reasoning blocks emitted by thinking models (qwen3). */
 export function stripThink(text: string): string {
-  return (text ?? '').replace(/<think>[\s\S]*?<\/think>/gi, '').trim()
+  return text.replace(/<think>[\s\S]*?<\/think>/gi, '').trim()
 }
 
 // Best-effort JSON Schema → Gemini responseSchema converter. Handles the common
@@ -22,27 +22,32 @@ export function stripThink(text: string): string {
 // description). Returns null on anything unsupported (anyOf/oneOf/$ref/tuples) so
 // the caller falls back to mime-type-json + prompt-appended schema.
 export function toGeminiSchema(node: unknown): Record<string, unknown> | null {
-  if (!node || typeof node !== 'object') return null
-  const n = node as Record<string, any>
+  if (node == null || typeof node !== 'object') {return null}
+  const n = node as Record<string, unknown>
   const t = n.type
-  const desc = n.description ? { description: n.description } : {}
+  const desc = typeof n.description === 'string' ? { description: n.description } : {}
   if (t === 'object') {
     const props: Record<string, unknown> = {}
-    for (const [k, v] of Object.entries(n.properties ?? {})) {
+    const rawProps = n.properties
+    if (rawProps != null && (typeof rawProps !== 'object' || Array.isArray(rawProps))) {return null}
+    for (const [k, v] of Object.entries(rawProps ?? {})) {
       const c = toGeminiSchema(v)
-      if (c == null) return null
+      if (c == null) {return null}
       props[k] = c
     }
+    const required = Array.isArray(n.required) && n.required.every((item) => typeof item === 'string')
+      ? n.required
+      : undefined
     return {
       type: 'object',
       properties: props,
-      ...(Array.isArray(n.required) ? { required: n.required } : {}),
+      ...(required != null ? { required } : {}),
       ...desc,
     }
   }
   if (t === 'array') {
     const items = toGeminiSchema(n.items)
-    if (items == null) return null
+    if (items == null) {return null}
     return { type: 'array', items, ...desc }
   }
   if (t === 'string') {

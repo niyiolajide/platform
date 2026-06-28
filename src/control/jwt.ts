@@ -47,7 +47,10 @@ function b64urlDecode(s: string): Buffer {
 
 function b64urlJson(s: string): Record<string, unknown> | null {
   try {
-    return JSON.parse(b64urlDecode(s).toString('utf8'))
+    const parsed: unknown = JSON.parse(b64urlDecode(s).toString('utf8'))
+    return parsed !== null && typeof parsed === 'object' && !Array.isArray(parsed)
+      ? parsed as Record<string, unknown>
+      : null
   } catch {
     return null
   }
@@ -67,7 +70,7 @@ function verifyRs256(signingInput: string, sig: Buffer, kid: string | undefined)
   const data = Buffer.from(signingInput)
   for (const k of toTry) {
     try {
-      if (crypto.verify('RSA-SHA256', data, k.pem, sig)) return true
+      if (crypto.verify('RSA-SHA256', data, k.pem, sig)) {return true}
     } catch {
       // malformed key PEM — skip
     }
@@ -84,38 +87,46 @@ export function verifyPulseToken(
   token: string | undefined | null,
   opts: VerifyPulseTokenOptions = {},
 ): PulseJwtPayload | null {
-  if (!token) return null
+  if (!token) {return null}
   const parts = token.split('.')
-  if (parts.length !== 3) return null
+  if (parts.length !== 3) {return null}
   const [headerB64, payloadB64, sigB64] = parts
 
   const header = b64urlJson(headerB64)
-  if (!header) return null
+  if (!header) {return null}
   const signingInput = `${headerB64}.${payloadB64}`
   const sig = b64urlDecode(sigB64)
 
   // RS256-only (Stage 4): HS256 is retired — ControlPlane is the sole minter via its
   // private key; apps verify with the published public key(s) and cannot forge.
-  if (header.alg !== 'RS256') return null
-  if (!verifyRs256(signingInput, sig, header.kid as string | undefined)) return null
+  if (header.alg !== 'RS256') {return null}
+  if (!verifyRs256(signingInput, sig, header.kid as string | undefined)) {return null}
 
-  const payload = b64urlJson(payloadB64) as PulseJwtPayload | null
-  if (!payload || payload.iss !== 'controlplane') return null
+  const payload = parsePulsePayload(b64urlJson(payloadB64))
+  if (payload?.iss !== 'controlplane') {return null}
 
   const now = Date.now() / 1000
   // Require an expiry — a token with no `exp` would be valid forever and is unprunable
   // from the revocation denylist; reject it outright. (Every ControlPlane minter sets exp.)
   // Strict (no skew): never extend a token's life past its stated expiry.
-  if (typeof payload.exp !== 'number' || now > payload.exp) return null
+  if (typeof payload.exp !== 'number' || now > payload.exp) {return null}
   // Enforce not-before when present (small skew tolerance for a just-minted token whose
   // nbf is marginally ahead of this host's clock).
-  if (typeof payload.nbf === 'number' && now < payload.nbf - CLOCK_SKEW_S) return null
+  if (typeof payload.nbf === 'number' && now < payload.nbf - CLOCK_SKEW_S) {return null}
   // Optional audience scoping — reject a token minted for a different service.
   if (opts.expectedAud) {
     const aud = payload.aud
     const ok = Array.isArray(aud) ? aud.includes(opts.expectedAud) : aud === opts.expectedAud
-    if (!ok) return null
+    if (!ok) {return null}
   }
-  if (isRevoked(payload.jti)) return null
+  if (isRevoked(payload.jti)) {return null}
   return payload
+}
+
+function parsePulsePayload(raw: Record<string, unknown> | null): PulseJwtPayload | null {
+  if (raw == null) {return null}
+  if (typeof raw.userId !== 'string' || typeof raw.email !== 'string' || typeof raw.iss !== 'string') {
+    return null
+  }
+  return raw as unknown as PulseJwtPayload
 }

@@ -16,26 +16,39 @@
     "./edge": { "types": "./dist/edge/index.d.ts", "default": "./dist/edge/index.js" },
     "./isolate": { "types": "./dist/isolate/index.d.ts", "default": "./dist/isolate/index.js" },
     "./eslint": "./eslint-config.mjs",
+    "./eslint/base": "./eslint-base.mjs",
+    "./eslint/native": "./eslint-native.mjs",
+    "./eslint/next": "./eslint-next.mjs",
+    "./eslint/node": "./eslint-node.mjs",
     "./design-guard": "./design-guard.mjs"
   },
   "bin": {
     "pulse-design-guard": "./design-guard.mjs"
   },
-  "files": ["dist", "src", "design-guard.mjs", "eslint-config.mjs"],
+  "files": ["dist", "src", "design-guard.mjs", "eslint-*.mjs"],
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
+    "lint": "eslint src eslint-*.mjs design-guard.mjs eslint.config.mjs vitest.config.ts --max-warnings=0",
     "typecheck": "tsc -p tsconfig.build.json --noEmit",
     "test": "vitest run",
     "verify-dist": "npm run build && git diff --exit-code -- dist || (echo 'dist out of sync with source — run npm run build and commit' && exit 1)"
   },
   "dependencies": {
-    "zod": "^3.23.8",
+    "@eslint/eslintrc": "^3.3.1",
     "@eslint/js": "^8.57.1",
+    "@next/eslint-plugin-next": "^14.1.0",
     "@typescript-eslint/eslint-plugin": "^8.61.1",
     "@typescript-eslint/parser": "^8.61.1",
+    "eslint-plugin-import": "^2.32.0",
+    "eslint-plugin-jsx-a11y": "^6.10.2",
+    "eslint-plugin-promise": "^7.2.1",
     "eslint-plugin-react": "^7.37.5",
-    "eslint-plugin-react-hooks": "5.0.0-canary-7118f5dd7-20230705",
-    "globals": "^13.24.0"
+    "eslint-plugin-react-hooks": "^5.2.0",
+    "eslint-plugin-react-native": "^5.0.0",
+    "eslint-plugin-security": "^3.0.1",
+    "globals": "^13.24.0",
+    "typescript-eslint": "^8.61.1",
+    "zod": "^3.23.8"
   },
   "peerDependencies": {
     "@anthropic-ai/sdk": ">=0.30.0",
@@ -49,6 +62,7 @@
   "devDependencies": {
     "@anthropic-ai/sdk": "^0.36.0",
     "@google/generative-ai": "^0.21.0",
+    "eslint": "^8.57.1",
     "next": "^14.1.0",
     "typescript": "^5.6.0",
     "vitest": "^2.1.0"

@@ -66,7 +66,7 @@ export function priceFor(model: string, at: Date = new Date()): ModelPrice | nul
   const candidates = MODEL_PRICES.filter(
     (p) => (model === p.model || model.startsWith(p.model)) && p.since <= atIso,
   )
-  if (candidates.length === 0) return null
+  if (candidates.length === 0) {return null}
   // Prefer the most specific (longest) model match, then the newest since.
   candidates.sort((a, b) => b.model.length - a.model.length || (a.since < b.since ? 1 : -1))
   return candidates[0]
@@ -83,8 +83,8 @@ export function estimateCostCents(
   at: Date = new Date(),
 ): number | undefined {
   const price = priceFor(model, at)
-  if (!price) return undefined
-  if (tokensIn == null && tokensOut == null) return undefined
+  if (!price) {return undefined}
+  if (tokensIn == null && tokensOut == null) {return undefined}
   const inCents = ((tokensIn ?? 0) / 1_000_000) * price.per1MInCents
   const outCents = ((tokensOut ?? 0) / 1_000_000) * price.per1MOutCents
   return inCents + outCents

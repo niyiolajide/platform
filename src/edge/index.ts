@@ -50,20 +50,21 @@ export function pulseLoginRedirect(
 ): NextResponse {
   const { pathname } = request.nextUrl
   const xfHost = request.headers.get('x-forwarded-host')
-  const fwdHost = xfHost || request.headers.get('host')
-  const fwdProto = request.headers.get('x-forwarded-proto') || request.nextUrl.protocol.replace(':', '')
-  const proxied = Boolean(xfHost || request.headers.get('x-forwarded-proto'))
+  const forwardedProto = request.headers.get('x-forwarded-proto')
+  const fwdHost = xfHost ?? request.headers.get('host')
+  const fwdProto = forwardedProto ?? request.nextUrl.protocol.replace(':', '')
+  const proxied = xfHost != null || forwardedProto != null
 
   const hubBase = proxied
     ? `${fwdProto}://${fwdHost}`
-    : opts.hubUrlFallback ||
-      process.env.CONTROLPLANE_URL_PUBLIC ||
-      process.env.NEXT_PUBLIC_CONTROLPLANE_URL ||
+    : opts.hubUrlFallback ??
+      process.env.CONTROLPLANE_URL_PUBLIC ??
+      process.env.NEXT_PUBLIC_CONTROLPLANE_URL ??
       'http://localhost:4000'
 
   const url = new URL('/login', hubBase)
-  if (fwdHost) {
-    const basePath = opts.basePath ?? request.nextUrl.basePath ?? ''
+  if (fwdHost != null) {
+    const basePath = opts.basePath ?? request.nextUrl.basePath
     url.searchParams.set('next', `${fwdProto}://${fwdHost}${basePath}${pathname}`)
   }
   return NextResponse.redirect(url)
@@ -83,14 +84,14 @@ export function pulseAuthGate(request: NextRequest, opts: PulseAuthGateOptions =
   const method = request.method
 
   const publicPrefixes = opts.publicPrefixes ?? []
-  if (publicPrefixes.some((p) => pathname.startsWith(p))) return null
+  if (publicPrefixes.some((p) => pathname.startsWith(p))) {return null}
 
   const publicGetPrefixes = opts.publicGetPrefixes ?? []
   if ((method === 'GET' || method === 'HEAD') && publicGetPrefixes.some((p) => pathname.startsWith(p))) {
     return null
   }
 
-  if (hasPulseToken(request)) return null
+  if (hasPulseToken(request)) {return null}
 
   // API calls get a 401; page navigations redirect to ControlPlane login.
   if (pathname.startsWith('/api/')) {

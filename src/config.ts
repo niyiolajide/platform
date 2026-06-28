@@ -12,15 +12,15 @@ export interface PlatformLogger {
 }
 
 const consoleLogger: PlatformLogger = {
-  warn: (o, m) => console.warn('[platform]', m ?? '', o ?? ''),
-  info: (o, m) => console.info('[platform]', m ?? '', o ?? ''),
-  error: (o, m) => console.error('[platform]', m ?? '', o ?? ''),
+  warn: (o, m) => { console.warn('[platform]', m ?? '', o ?? ''); },
+  info: (o, m) => { console.info('[platform]', m ?? '', o ?? ''); },
+  error: (o, m) => { console.error('[platform]', m ?? '', o ?? ''); },
 }
 
 let logger: PlatformLogger = consoleLogger
 
 export function configurePlatform(opts: { logger?: PlatformLogger }): void {
-  if (opts.logger) logger = opts.logger
+  if (opts.logger) {logger = opts.logger}
 }
 
 export function getLogger(): PlatformLogger {
@@ -35,9 +35,9 @@ export interface PulsePublicKey {
 
 /** API keys + the pulse-token signing/verification material — read live from env. */
 export const keys = {
-  anthropicApiKey: () => process.env.ANTHROPIC_API_KEY || '',
-  geminiApiKey: () => process.env.GEMINI_API_KEY || '',
-  sharedJwtSecret: () => process.env.SHARED_JWT_SECRET || '',
+  anthropicApiKey: () => process.env.ANTHROPIC_API_KEY ?? '',
+  geminiApiKey: () => process.env.GEMINI_API_KEY ?? '',
+  sharedJwtSecret: () => process.env.SHARED_JWT_SECRET ?? '',
 
   /**
    * ControlPlane RSA private signing key (PKCS8 PEM), base64-encoded in
@@ -57,15 +57,26 @@ export const keys = {
    */
   pulsePublicKeys: (): PulsePublicKey[] => {
     const raw = process.env.PULSE_TOKEN_PUBLIC_KEYS
-    if (!raw) return []
+    if (!raw) {return []}
     try {
-      const arr = JSON.parse(raw)
-      if (!Array.isArray(arr)) return []
+      const arr: unknown = JSON.parse(raw)
+      if (!Array.isArray(arr)) {return []}
       return arr
-        .filter((e) => e && typeof e.kid === 'string' && typeof e.pem === 'string')
-        .map((e) => ({ kid: e.kid as string, pem: Buffer.from(e.pem as string, 'base64').toString('utf8') }))
+        .filter(isPulsePublicKeyEnv)
+        .map((e) => ({ kid: e.kid, pem: Buffer.from(e.pem, 'base64').toString('utf8') }))
     } catch {
       return []
     }
   },
+}
+
+function isPulsePublicKeyEnv(value: unknown): value is { kid: string; pem: string } {
+  return (
+    value !== null &&
+    typeof value === 'object' &&
+    'kid' in value &&
+    'pem' in value &&
+    typeof value.kid === 'string' &&
+    typeof value.pem === 'string'
+  )
 }

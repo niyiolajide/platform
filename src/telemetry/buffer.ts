@@ -28,7 +28,7 @@ function encodeTime(ms: number): string {
 function encodeRandom(): string {
   const bytes = randomBytes(16)
   let out = ''
-  for (let i = 0; i < 16; i++) out += CROCKFORD[bytes[i] % 32]
+  for (let i = 0; i < 16; i++) {out += CROCKFORD[bytes[i] % 32]}
   return out
 }
 
@@ -57,11 +57,15 @@ export type TelemetrySink<T> = (r: T) => void
  * caught + logged), so it stays off the hot path. Pair with `drainBuffer` from a
  * scheduled job to drain the buffer.
  */
-export function createRedisListSink<T>(redis: RedisLike, key: string): TelemetrySink<T> {
+export function createRedisListSink<T>(
+  redis: RedisLike,
+  key: string,
+  serialize: (record: T) => string = (record) => JSON.stringify(record),
+): TelemetrySink<T> {
   return (r: T) => {
     Promise.resolve()
-      .then(() => redis.lpush(key, JSON.stringify(r)))
-      .catch((err) => {
+      .then(() => redis.lpush(key, serialize(r)))
+      .catch((err: unknown) => {
         try {
           getLogger().warn({ err, key }, '[telemetry] redis lpush failed (dropped)')
         } catch {
@@ -79,26 +83,32 @@ export function createRedisListSink<T>(redis: RedisLike, key: string): Telemetry
  * list is the oldest; we read+trim the tail. Returns the count shipped. A post
  * failure leaves the buffer intact (records retried next tick).
  */
-export async function drainBuffer<T>(
+export interface DrainBufferOptions<T> {
   redis: RedisLike,
   postFn: (batch: T[]) => Promise<void>,
   batchSize: number,
   key: string,
-): Promise<number> {
-  if (batchSize <= 0) return 0
+  parse?: (raw: unknown) => T | null,
+}
+
+export async function drainBuffer<T>(opts: DrainBufferOptions<T>): Promise<number> {
+  const { redis, postFn, batchSize, key, parse = (raw): T | null => raw as T } = opts
+  if (batchSize <= 0) {return 0}
   // Oldest `batchSize` entries live at the tail (lpush prepends). lrange returns
   // them newest→oldest, so reverse to ship oldest-first.
   const raw = (await redis.lrange(key, -batchSize, -1)).slice().reverse()
-  if (raw.length === 0) return 0
+  if (raw.length === 0) {return 0}
   const batch: T[] = []
   for (const s of raw) {
     try {
-      batch.push(JSON.parse(s) as T)
+      const parsed: unknown = JSON.parse(s)
+      const record = parse(parsed)
+      if (record != null) {batch.push(record)}
     } catch {
       /* skip a corrupt entry rather than wedge the whole buffer */
     }
   }
-  if (batch.length > 0) await postFn(batch)
+  if (batch.length > 0) {await postFn(batch)}
   // Drop the shipped tail: keep everything from index 0 up to before the tail slice.
   await redis.ltrim(key, 0, -raw.length - 1)
   return batch.length

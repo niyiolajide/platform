@@ -15,8 +15,9 @@ async function ollamaGenerate(body, signal) {
         body: JSON.stringify({ stream: false, think: false, keep_alive: keepAlive, ...body }),
         signal,
     });
-    if (!resp.ok)
+    if (!resp.ok) {
         throw new Error(`ollama HTTP ${resp.status}`);
+    }
     const data = (await resp.json());
     return {
         text: data.response ?? '',

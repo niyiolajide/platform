@@ -20,7 +20,7 @@ import {
 // mtime-cached (cheap on the hot path, near-real-time after a hub edit). Writes are
 // atomic (temp + rename) and only the hub mounts the dir read-write.
 
-const CONTROL_DIR = () => process.env.CONTROL_DIR || '/control'
+const CONTROL_DIR = () => process.env.CONTROL_DIR ?? '/control'
 
 interface CacheEntry {
   mtimeMs: number
@@ -38,9 +38,9 @@ function readRaw(file: string): unknown {
     return null
   }
   const hit = cache.get(file)
-  if (hit && hit.mtimeMs === stat.mtimeMs) return hit.value
+  if (hit?.mtimeMs === stat.mtimeMs) {return hit.value}
   try {
-    const value = JSON.parse(fs.readFileSync(full, 'utf8'))
+    const value: unknown = JSON.parse(fs.readFileSync(full, 'utf8'))
     cache.set(file, { mtimeMs: stat.mtimeMs, value })
     return value
   } catch (err) {
@@ -67,11 +67,11 @@ function aiEnvDefaults(): Partial<AiSettings> {
       process.env.AI_ANONYMIZE_REQUESTS != null
         ? process.env.AI_ANONYMIZE_REQUESTS !== 'false'
         : undefined,
-    anthropicModel: process.env.ANTHROPIC_MODEL || undefined,
-    anthropicModelFast: process.env.ANTHROPIC_MODEL_FAST || undefined,
-    geminiModel: process.env.GEMINI_MODEL || undefined,
-    geminiModelFast: process.env.GEMINI_MODEL_FAST || undefined,
-    geminiModelFallback: process.env.GEMINI_MODEL_FALLBACK || undefined,
+    anthropicModel: process.env.ANTHROPIC_MODEL ?? undefined,
+    anthropicModelFast: process.env.ANTHROPIC_MODEL_FAST ?? undefined,
+    geminiModel: process.env.GEMINI_MODEL ?? undefined,
+    geminiModelFast: process.env.GEMINI_MODEL_FAST ?? undefined,
+    geminiModelFallback: process.env.GEMINI_MODEL_FALLBACK ?? undefined,
   }
 }
 
@@ -93,7 +93,7 @@ function dedupeSteps(arr: CascadeStep[]): CascadeStep[] {
   const seen = new Set<string>()
   return arr.filter((x) => {
     const k = `${x.provider}:${x.model}`
-    if (seen.has(k)) return false
+    if (seen.has(k)) {return false}
     seen.add(k)
     return true
   })
@@ -155,18 +155,16 @@ export function readAiSettings(): AiSettings {
   } catch {
     /* absent → sentinel -1 (env/defaults only) */
   }
-  if (settingsMemo && settingsMemo.mtimeMs === mtimeMs) return settingsMemo.value
+  if (settingsMemo?.mtimeMs === mtimeMs) {return settingsMemo.value}
 
   const env = aiEnvDefaults()
   const rawFile = (readRaw('ai.json') as Record<string, unknown> | null) ?? {}
-  // Drop undefined env entries so they don't clobber file/schema defaults.
-  const envClean = Object.fromEntries(Object.entries(env).filter(([, v]) => v != null))
-  let settings = AI_SETTINGS_SCHEMA.parse({ ...envClean, ...rawFile })
+  let settings = AI_SETTINGS_SCHEMA.parse({ ...env, ...rawFile })
 
   // If the file predates `cascades` but set legacy model fields, derive a cascade
   // from them so behavior is preserved until the cascade is published explicitly.
   const explicitCascades = rawFile.cascades != null
-  if (!explicitCascades && (hasLegacyModelOverride(rawFile) || hasLegacyModelOverride(envClean))) {
+  if (!explicitCascades && (hasLegacyModelOverride(rawFile) || hasLegacyModelOverride(env))) {
     settings = { ...settings, cascades: synthesizeCascades(settings) }
   }
   settings = backfillLegacy(settings)
@@ -177,7 +175,7 @@ export function readAiSettings(): AiSettings {
 
 /** Did the AI settings come from the published file or env/defaults? (drift signal) */
 export function aiConfigSource(): 'file' | 'env-default' {
-  return readRaw('ai.json') ? 'file' : 'env-default'
+  return readRaw('ai.json') != null ? 'file' : 'env-default'
 }
 
 /** The cross-app registry for the shell AppSwitcher (from control/apps.json). */
@@ -197,7 +195,7 @@ export function readNotifySettings(): NotifySettings {
 let lastRevocationsWarnMs = 0
 function warnRevocationsUnavailable(): void {
   const now = Date.now()
-  if (now - lastRevocationsWarnMs < 10 * 60 * 1000) return
+  if (now - lastRevocationsWarnMs < 10 * 60 * 1000) {return}
   lastRevocationsWarnMs = now
   getLogger().warn(
     { file: 'revocations.json' },
@@ -218,7 +216,7 @@ export function readRevocations(): Revocations {
 }
 
 export function isRevoked(jti: string | undefined | null): boolean {
-  if (!jti) return false
+  if (!jti) {return false}
   return readRevocations().revoked.some((r) => r.jti === jti)
 }
 
@@ -236,7 +234,7 @@ export function publishNotifySettings(s: NotifySettings): void {
 export function publishRevocations(r: Revocations): void {
   const now = Math.floor(Date.now() / 1000)
   const pruned: Revocations = {
-    schemaVersion: r.schemaVersion ?? 1,
+    schemaVersion: r.schemaVersion,
     revoked: r.revoked.filter((e) => e.exp > now),
   }
   writeRaw('revocations.json', REVOCATIONS_SCHEMA.parse(pruned))
@@ -245,7 +243,7 @@ export function publishRevocations(r: Revocations): void {
 /** Add a single jti to the revocation list (hub only). */
 export function revokeJti(jti: string, exp: number): void {
   const cur = readRevocations()
-  if (cur.revoked.some((e) => e.jti === jti)) return
+  if (cur.revoked.some((e) => e.jti === jti)) {return}
   publishRevocations({ schemaVersion: cur.schemaVersion, revoked: [...cur.revoked, { jti, exp }] })
 }
 

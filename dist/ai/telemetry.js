@@ -30,17 +30,20 @@ function hasAiTelemetrySink() {
  * record gives prompt+response a consistent token mapping within that record.
  */
 function recordAiCall(record) {
-    if (!sink)
+    if (!sink) {
         return;
+    }
     try {
         const r = { ...record };
         if (r.prompt != null || r.response != null) {
             const anon = (0, anonymize_1.createAnonymizer)();
             // Mask prompt first so its tokens are reused in the response mask (stable map).
-            if (r.prompt != null)
+            if (r.prompt != null) {
                 r.prompt = anon.mask(r.prompt);
-            if (r.response != null)
+            }
+            if (r.response != null) {
                 r.response = anon.mask(r.response);
+            }
         }
         sink(r);
     }
@@ -71,5 +74,5 @@ function createRedisSink(redis, key = exports.AI_TELEMETRY_BUFFER_KEY) {
  * contract.
  */
 function shipBuffer(redis, postFn, batchSize = 200, key = exports.AI_TELEMETRY_BUFFER_KEY) {
-    return (0, buffer_1.drainBuffer)(redis, postFn, batchSize, key);
+    return (0, buffer_1.drainBuffer)({ redis, postFn, batchSize, key });
 }

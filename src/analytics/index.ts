@@ -85,7 +85,7 @@ export function shipUsageEvents(
   batchSize: number = 500,
   key: string = USAGE_BUFFER_KEY,
 ): Promise<number> {
-  return drainBuffer<UsageEvent>(redis, postFn, batchSize, key)
+  return drainBuffer<UsageEvent>({ redis, postFn, batchSize, key })
 }
 
 /**

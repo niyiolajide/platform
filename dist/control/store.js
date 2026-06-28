@@ -23,7 +23,7 @@ const schema_1 = require("./schema");
 // OFFLINE — no network call, so the hub being down never blocks an app. Reads are
 // mtime-cached (cheap on the hot path, near-real-time after a hub edit). Writes are
 // atomic (temp + rename) and only the hub mounts the dir read-write.
-const CONTROL_DIR = () => process.env.CONTROL_DIR || '/control';
+const CONTROL_DIR = () => process.env.CONTROL_DIR ?? '/control';
 const cache = new Map();
 /** Read + parse a control file, mtime-cached. Returns null if absent/unreadable. */
 function readRaw(file) {
@@ -36,8 +36,9 @@ function readRaw(file) {
         return null;
     }
     const hit = cache.get(file);
-    if (hit && hit.mtimeMs === stat.mtimeMs)
+    if (hit?.mtimeMs === stat.mtimeMs) {
         return hit.value;
+    }
     try {
         const value = JSON.parse(fs_1.default.readFileSync(full, 'utf8'));
         cache.set(file, { mtimeMs: stat.mtimeMs, value });
@@ -64,11 +65,11 @@ function aiEnvDefaults() {
         anonymizeRequests: process.env.AI_ANONYMIZE_REQUESTS != null
             ? process.env.AI_ANONYMIZE_REQUESTS !== 'false'
             : undefined,
-        anthropicModel: process.env.ANTHROPIC_MODEL || undefined,
-        anthropicModelFast: process.env.ANTHROPIC_MODEL_FAST || undefined,
-        geminiModel: process.env.GEMINI_MODEL || undefined,
-        geminiModelFast: process.env.GEMINI_MODEL_FAST || undefined,
-        geminiModelFallback: process.env.GEMINI_MODEL_FALLBACK || undefined,
+        anthropicModel: process.env.ANTHROPIC_MODEL ?? undefined,
+        anthropicModelFast: process.env.ANTHROPIC_MODEL_FAST ?? undefined,
+        geminiModel: process.env.GEMINI_MODEL ?? undefined,
+        geminiModelFast: process.env.GEMINI_MODEL_FAST ?? undefined,
+        geminiModelFallback: process.env.GEMINI_MODEL_FALLBACK ?? undefined,
     };
 }
 const LEGACY_MODEL_KEYS = [
@@ -87,8 +88,9 @@ function dedupeSteps(arr) {
     const seen = new Set();
     return arr.filter((x) => {
         const k = `${x.provider}:${x.model}`;
-        if (seen.has(k))
+        if (seen.has(k)) {
             return false;
+        }
         seen.add(k);
         return true;
     });
@@ -145,17 +147,16 @@ function readAiSettings() {
     catch {
         /* absent → sentinel -1 (env/defaults only) */
     }
-    if (settingsMemo && settingsMemo.mtimeMs === mtimeMs)
+    if (settingsMemo?.mtimeMs === mtimeMs) {
         return settingsMemo.value;
+    }
     const env = aiEnvDefaults();
     const rawFile = readRaw('ai.json') ?? {};
-    // Drop undefined env entries so they don't clobber file/schema defaults.
-    const envClean = Object.fromEntries(Object.entries(env).filter(([, v]) => v != null));
-    let settings = schema_1.AI_SETTINGS_SCHEMA.parse({ ...envClean, ...rawFile });
+    let settings = schema_1.AI_SETTINGS_SCHEMA.parse({ ...env, ...rawFile });
     // If the file predates `cascades` but set legacy model fields, derive a cascade
     // from them so behavior is preserved until the cascade is published explicitly.
     const explicitCascades = rawFile.cascades != null;
-    if (!explicitCascades && (hasLegacyModelOverride(rawFile) || hasLegacyModelOverride(envClean))) {
+    if (!explicitCascades && (hasLegacyModelOverride(rawFile) || hasLegacyModelOverride(env))) {
         settings = { ...settings, cascades: synthesizeCascades(settings) };
     }
     settings = backfillLegacy(settings);
@@ -164,7 +165,7 @@ function readAiSettings() {
 }
 /** Did the AI settings come from the published file or env/defaults? (drift signal) */
 function aiConfigSource() {
-    return readRaw('ai.json') ? 'file' : 'env-default';
+    return readRaw('ai.json') != null ? 'file' : 'env-default';
 }
 /** The cross-app registry for the shell AppSwitcher (from control/apps.json). */
 function readApps() {
@@ -181,8 +182,9 @@ function readNotifySettings() {
 let lastRevocationsWarnMs = 0;
 function warnRevocationsUnavailable() {
     const now = Date.now();
-    if (now - lastRevocationsWarnMs < 10 * 60 * 1000)
+    if (now - lastRevocationsWarnMs < 10 * 60 * 1000) {
         return;
+    }
     lastRevocationsWarnMs = now;
     (0, config_1.getLogger)().warn({ file: 'revocations.json' }, '[control] revocations file absent/unreadable — FAILING OPEN (no tokens are being revoked). ' +
         'Check the control bundle is published and mounted.');
@@ -198,8 +200,9 @@ function readRevocations() {
     return schema_1.REVOCATIONS_SCHEMA.parse(raw);
 }
 function isRevoked(jti) {
-    if (!jti)
+    if (!jti) {
         return false;
+    }
     return readRevocations().revoked.some((r) => r.jti === jti);
 }
 // ── Writers (hub only) ────────────────────────────────────────────────────────
@@ -213,7 +216,7 @@ function publishNotifySettings(s) {
 function publishRevocations(r) {
     const now = Math.floor(Date.now() / 1000);
     const pruned = {
-        schemaVersion: r.schemaVersion ?? 1,
+        schemaVersion: r.schemaVersion,
         revoked: r.revoked.filter((e) => e.exp > now),
     };
     writeRaw('revocations.json', schema_1.REVOCATIONS_SCHEMA.parse(pruned));
@@ -221,8 +224,9 @@ function publishRevocations(r) {
 /** Add a single jti to the revocation list (hub only). */
 function revokeJti(jti, exp) {
     const cur = readRevocations();
-    if (cur.revoked.some((e) => e.jti === jti))
+    if (cur.revoked.some((e) => e.jti === jti)) {
         return;
+    }
     publishRevocations({ schemaVersion: cur.schemaVersion, revoked: [...cur.revoked, { jti, exp }] });
 }
 /** Test/maintenance helper — clears the mtime cache. */

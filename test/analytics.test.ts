@@ -61,7 +61,7 @@ describe('usage buffer', () => {
   it('shipUsageEvents drains oldest-first and trims the shipped tail', async () => {
     const redis = fakeRedis()
     const sink = createUsageSink(redis)
-    for (const id of ['e1', 'e2', 'e3']) sink(ev({ id }))
+    for (const id of ['e1', 'e2', 'e3']) {sink(ev({ id }))}
     await new Promise((r) => setTimeout(r, 0))
 
     const posted: UsageEvent[][] = []

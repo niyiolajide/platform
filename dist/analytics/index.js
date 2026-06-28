@@ -24,7 +24,7 @@ function createUsageSink(redis, key = exports.USAGE_BUFFER_KEY) {
  * dedup by event id. See `drainBuffer` for the generic contract.
  */
 function shipUsageEvents(redis, postFn, batchSize = 500, key = exports.USAGE_BUFFER_KEY) {
-    return (0, buffer_1.drainBuffer)(redis, postFn, batchSize, key);
+    return (0, buffer_1.drainBuffer)({ redis, postFn, batchSize, key });
 }
 /**
  * Server-side sessionization. Given a user's events (any order), sort by ts and

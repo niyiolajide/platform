@@ -18,7 +18,7 @@ async function ollamaGenerate(
     body: JSON.stringify({ stream: false, think: false, keep_alive: keepAlive, ...body }),
     signal,
   })
-  if (!resp.ok) throw new Error(`ollama HTTP ${resp.status}`)
+  if (!resp.ok) {throw new Error(`ollama HTTP ${resp.status}`)}
   const data = (await resp.json()) as {
     response?: string
     prompt_eval_count?: number

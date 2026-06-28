@@ -6,21 +6,25 @@ exports.mortgageAmortizationSchedule = mortgageAmortizationSchedule;
 exports.mortgageBalanceAt = mortgageBalanceAt;
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 function cents(value) {
-    if (typeof value === 'bigint')
+    if (typeof value === 'bigint') {
         return value;
+    }
     if (typeof value === 'number') {
-        if (!Number.isFinite(value))
+        if (!Number.isFinite(value)) {
             throw new Error('money value must be finite');
+        }
         return BigInt(Math.round(value));
     }
-    if (!/^-?\d+$/.test(value.trim()))
+    if (!/^-?\d+$/.test(value.trim())) {
         throw new Error(`invalid cents value "${value}"`);
+    }
     return BigInt(value);
 }
 function parseDate(value) {
     const d = value instanceof Date ? value : new Date(`${value}T00:00:00Z`);
-    if (!Number.isFinite(d.getTime()))
+    if (!Number.isFinite(d.getTime())) {
         throw new Error(`invalid date "${String(value)}"`);
+    }
     return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
 }
 function dateOnly(d) {
@@ -45,29 +49,36 @@ function monthsBetween(start, end) {
 }
 function termMonths(terms) {
     if (terms.termMonths != null) {
-        if (!Number.isInteger(terms.termMonths) || terms.termMonths <= 0)
+        if (!Number.isInteger(terms.termMonths) || terms.termMonths <= 0) {
             throw new Error('termMonths must be a positive integer');
+        }
         return terms.termMonths;
     }
-    if (!terms.maturityDate)
+    if (terms.maturityDate == null || terms.maturityDate === '') {
         throw new Error('mortgage terms require termMonths or maturityDate');
+    }
     const n = monthsBetween(parseDate(terms.originationDate), parseDate(terms.maturityDate));
-    if (n <= 0)
+    if (n <= 0) {
         throw new Error('maturityDate must be after originationDate');
+    }
     return n;
 }
 function mortgageMonthlyPaymentCents(terms) {
     const principal = cents(terms.originalBalanceCents);
-    if (principal <= 0n)
+    if (principal <= 0n) {
         return 0n;
-    if (terms.monthlyPaymentCents != null)
+    }
+    if (terms.monthlyPaymentCents != null) {
         return cents(terms.monthlyPaymentCents);
+    }
     const n = termMonths(terms);
     const monthlyRate = terms.annualInterestRate / 12;
-    if (!Number.isFinite(monthlyRate) || monthlyRate < 0)
+    if (!Number.isFinite(monthlyRate) || monthlyRate < 0) {
         throw new Error('annualInterestRate must be a non-negative decimal');
-    if (monthlyRate === 0)
+    }
+    if (monthlyRate === 0) {
         return BigInt(Math.ceil(Number(principal) / n));
+    }
     const p = Number(principal);
     const payment = p * monthlyRate / (1 - Math.pow(1 + monthlyRate, -n));
     return BigInt(Math.round(payment));
@@ -75,8 +86,9 @@ function mortgageMonthlyPaymentCents(terms) {
 function mortgageAmortizationSchedule(terms) {
     const n = termMonths(terms);
     const monthlyRate = terms.annualInterestRate / 12;
-    if (!Number.isFinite(monthlyRate) || monthlyRate < 0)
+    if (!Number.isFinite(monthlyRate) || monthlyRate < 0) {
         throw new Error('annualInterestRate must be a non-negative decimal');
+    }
     let balance = cents(terms.originalBalanceCents);
     const payment = mortgageMonthlyPaymentCents(terms);
     const rows = [];
@@ -102,12 +114,14 @@ function mortgageAmortizationSchedule(terms) {
 function mortgageBalanceAt(terms, asOf) {
     const target = parseDate(asOf);
     const origination = parseDate(terms.originationDate);
-    if (target.getTime() < origination.getTime() - MS_PER_DAY)
+    if (target.getTime() < origination.getTime() - MS_PER_DAY) {
         return cents(terms.originalBalanceCents);
+    }
     let balance = cents(terms.originalBalanceCents);
     for (const row of mortgageAmortizationSchedule(terms)) {
-        if (parseDate(row.paymentDate).getTime() > target.getTime())
+        if (parseDate(row.paymentDate).getTime() > target.getTime()) {
             break;
+        }
         balance = row.endingBalanceCents;
     }
     return balance < 0n ? 0n : balance;

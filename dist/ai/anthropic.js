@@ -18,8 +18,7 @@ function isAnthropicConfigured() {
 function getAnthropic() {
     // Explicit timeout + a single in-SDK retry: the cascade handles cross-provider
     // failover, so we fail fast to the next step rather than retrying here for long.
-    if (!client)
-        client = new sdk_1.default({ apiKey: config_1.keys.anthropicApiKey(), timeout: 60000, maxRetries: 1 });
+    client ?? (client = new sdk_1.default({ apiKey: config_1.keys.anthropicApiKey(), timeout: 60000, maxRetries: 1 }));
     return client;
 }
 /** Test helper — reset the memoized client (e.g. after changing the env key). */
@@ -50,8 +49,9 @@ exports.anthropicAdapter = {
         }, { signal });
         const usage = anthropicUsage(resp);
         const tu = resp.content.find((b) => b.type === 'tool_use');
-        if (!tu || tu.type !== 'tool_use')
+        if (tu?.type !== 'tool_use') {
             return { content: null, usage };
+        }
         return { content: tu.input, usage };
     },
     async callText(model, req, signal) {
@@ -72,5 +72,5 @@ exports.anthropicAdapter = {
 };
 function anthropicUsage(resp) {
     const u = resp.usage;
-    return { tokensIn: u?.input_tokens ?? undefined, tokensOut: u?.output_tokens ?? undefined };
+    return { tokensIn: u.input_tokens, tokensOut: u.output_tokens };
 }

@@ -1,27 +1,27 @@
 import { getLogger, keys } from '../config'
 import type { AttemptRequest, ProviderAdapter, StructuredAttempt, TokenUsage } from './types'
 import { parseJsonObject, toGeminiSchema } from './util'
+import type * as GoogleGenAi from '@google/generative-ai'
 
 // Gemini (Google) adapter. Lazily requires the optional peer dep so apps that
 // don't use Gemini need not install it. One attempt per call; throws on API
 // error; null only on unparseable/empty output.
 
-type GenAiModule = typeof import('@google/generative-ai')
+type GenAiModule = typeof GoogleGenAi
 let genaiMod: GenAiModule | null = null
-let genaiClient: import('@google/generative-ai').GoogleGenerativeAI | null = null
+let genaiClient: GoogleGenAi.GoogleGenerativeAI | null = null
 
-function genai(): import('@google/generative-ai').GoogleGenerativeAI | null {
-  if (!keys.geminiApiKey()) return null
+async function genai(): Promise<GoogleGenAi.GoogleGenerativeAI | null> {
+  if (!keys.geminiApiKey()) {return null}
   if (!genaiMod) {
     try {
-      // eslint-disable-next-line @typescript-eslint/no-var-requires
-      genaiMod = require('@google/generative-ai') as GenAiModule
+      genaiMod = await import('@google/generative-ai')
     } catch {
       getLogger().warn({}, '[ai/gemini] @google/generative-ai not installed')
       return null
     }
   }
-  if (!genaiClient) genaiClient = new genaiMod.GoogleGenerativeAI(keys.geminiApiKey())
+  genaiClient ??= new genaiMod.GoogleGenerativeAI(keys.geminiApiKey())
   return genaiClient
 }
 
@@ -44,8 +44,8 @@ export const geminiAdapter: ProviderAdapter = {
   configured: () => Boolean(keys.geminiApiKey()),
 
   async callStructured(model, req: StructuredAttempt, signal) {
-    const client = genai()
-    if (!client) return { content: null }
+    const client = await genai()
+    if (!client) {return { content: null }}
     // Prefer controlled generation (responseSchema) for schema-faithful JSON; fall
     // back to mime-type-json + a prompt-appended schema when the schema uses
     // constructs the converter can't express.
@@ -55,7 +55,7 @@ export const geminiAdapter: ProviderAdapter = {
       {
         model,
         ...(req.system ? { systemInstruction: req.system } : {}),
-        generationConfig: { ...cfg, ...(responseSchema ? { responseSchema } : {}) } as any,
+        generationConfig: { ...cfg, ...(responseSchema ? { responseSchema } : {}) },
       },
       { timeout: 60_000 },
     )
@@ -67,13 +67,13 @@ export const geminiAdapter: ProviderAdapter = {
   },
 
   async callText(model, req: AttemptRequest, signal) {
-    const client = genai()
-    if (!client) return { content: null }
+    const client = await genai()
+    if (!client) {return { content: null }}
     const m = client.getGenerativeModel(
       {
         model,
         ...(req.system ? { systemInstruction: req.system } : {}),
-        generationConfig: geminiGenConfig(model, req.maxTokens ?? 1024, false) as any,
+        generationConfig: geminiGenConfig(model, req.maxTokens ?? 1024, false),
       },
       { timeout: 60_000 },
     )

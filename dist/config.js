@@ -10,23 +10,24 @@ exports.keys = void 0;
 exports.configurePlatform = configurePlatform;
 exports.getLogger = getLogger;
 const consoleLogger = {
-    warn: (o, m) => console.warn('[platform]', m ?? '', o ?? ''),
-    info: (o, m) => console.info('[platform]', m ?? '', o ?? ''),
-    error: (o, m) => console.error('[platform]', m ?? '', o ?? ''),
+    warn: (o, m) => { console.warn('[platform]', m ?? '', o ?? ''); },
+    info: (o, m) => { console.info('[platform]', m ?? '', o ?? ''); },
+    error: (o, m) => { console.error('[platform]', m ?? '', o ?? ''); },
 };
 let logger = consoleLogger;
 function configurePlatform(opts) {
-    if (opts.logger)
+    if (opts.logger) {
         logger = opts.logger;
+    }
 }
 function getLogger() {
     return logger;
 }
 /** API keys + the pulse-token signing/verification material — read live from env. */
 exports.keys = {
-    anthropicApiKey: () => process.env.ANTHROPIC_API_KEY || '',
-    geminiApiKey: () => process.env.GEMINI_API_KEY || '',
-    sharedJwtSecret: () => process.env.SHARED_JWT_SECRET || '',
+    anthropicApiKey: () => process.env.ANTHROPIC_API_KEY ?? '',
+    geminiApiKey: () => process.env.GEMINI_API_KEY ?? '',
+    sharedJwtSecret: () => process.env.SHARED_JWT_SECRET ?? '',
     /**
      * ControlPlane RSA private signing key (PKCS8 PEM), base64-encoded in
      * PULSE_TOKEN_PRIVATE_KEY_B64. Present ONLY in the ControlPlane container — apps
@@ -44,14 +45,16 @@ exports.keys = {
      */
     pulsePublicKeys: () => {
         const raw = process.env.PULSE_TOKEN_PUBLIC_KEYS;
-        if (!raw)
+        if (!raw) {
             return [];
+        }
         try {
             const arr = JSON.parse(raw);
-            if (!Array.isArray(arr))
+            if (!Array.isArray(arr)) {
                 return [];
+            }
             return arr
-                .filter((e) => e && typeof e.kid === 'string' && typeof e.pem === 'string')
+                .filter(isPulsePublicKeyEnv)
                 .map((e) => ({ kid: e.kid, pem: Buffer.from(e.pem, 'base64').toString('utf8') }));
         }
         catch {
@@ -59,3 +62,11 @@ exports.keys = {
         }
     },
 };
+function isPulsePublicKeyEnv(value) {
+    return (value !== null &&
+        typeof value === 'object' &&
+        'kid' in value &&
+        'pem' in value &&
+        typeof value.kid === 'string' &&
+        typeof value.pem === 'string');
+}

@@ -14,7 +14,7 @@ export type TelemetrySink<T> = (r: T) => void;
  * caught + logged), so it stays off the hot path. Pair with `drainBuffer` from a
  * scheduled job to drain the buffer.
  */
-export declare function createRedisListSink<T>(redis: RedisLike, key: string): TelemetrySink<T>;
+export declare function createRedisListSink<T>(redis: RedisLike, key: string, serialize?: (record: T) => string): TelemetrySink<T>;
 /**
  * Drain up to `batchSize` buffered records and hand them to `postFn`. On a
  * successful post the shipped slice is LTRIMmed off the buffer (at-least-once:
@@ -23,4 +23,11 @@ export declare function createRedisListSink<T>(redis: RedisLike, key: string): T
  * list is the oldest; we read+trim the tail. Returns the count shipped. A post
  * failure leaves the buffer intact (records retried next tick).
  */
-export declare function drainBuffer<T>(redis: RedisLike, postFn: (batch: T[]) => Promise<void>, batchSize: number, key: string): Promise<number>;
+export interface DrainBufferOptions<T> {
+    redis: RedisLike;
+    postFn: (batch: T[]) => Promise<void>;
+    batchSize: number;
+    key: string;
+    parse?: (raw: unknown) => T | null;
+}
+export declare function drainBuffer<T>(opts: DrainBufferOptions<T>): Promise<number>;
