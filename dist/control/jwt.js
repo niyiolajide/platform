@@ -21,8 +21,9 @@ const store_1 = require("./store");
 //
 // Claims enforced: `iss==='controlplane'`, RS256 signature, a REQUIRED `exp` (a token
 // with no expiry is rejected — there must be no immortal tokens), `nbf` when present,
-// an optional caller-supplied `expectedAud` (service/job tokens carry an `aud`), and
-// the offline `jti` revocation denylist. A small clock-skew tolerance is allowed.
+// an optional caller-supplied `expectedAud` (service/job tokens carry an `aud`), an
+// explicit `expectedPurpose` for job tokens, and the offline `jti` revocation denylist.
+// A small clock-skew tolerance is allowed.
 const CLOCK_SKEW_S = 30;
 function b64urlDecode(s) {
     return Buffer.from(s.replace(/-/g, '+').replace(/_/g, '/'), 'base64');
@@ -62,11 +63,6 @@ function verifyRs256(signingInput, sig, kid) {
     }
     return false;
 }
-/**
- * Verify a pulse-token: an RS256 signature against ControlPlane's published key(s),
- * `iss==='controlplane'`, a REQUIRED non-expired `exp`, `nbf` (when present), an
- * optional `expectedAud`, and `jti` not revoked. Returns the payload or null.
- */
 function verifyPulseToken(token, opts = {}) {
     if (!token) {
         return null;
@@ -90,7 +86,7 @@ function verifyPulseToken(token, opts = {}) {
     if (!verifyRs256(signingInput, sig, header.kid)) {
         return null;
     }
-    const payload = parsePulsePayload(b64urlJson(payloadB64));
+    const payload = parsePulsePayload(b64urlJson(payloadB64), opts);
     if (payload?.iss !== 'controlplane') {
         return null;
     }
@@ -119,11 +115,17 @@ function verifyPulseToken(token, opts = {}) {
     }
     return payload;
 }
-function parsePulsePayload(raw) {
+function parsePulsePayload(raw, opts) {
     if (raw == null) {
         return null;
     }
-    if (typeof raw.userId !== 'string' || typeof raw.email !== 'string' || typeof raw.iss !== 'string') {
+    if (typeof raw.iss !== 'string') {
+        return null;
+    }
+    if (opts.expectedPurpose === 'job') {
+        return raw.purpose === 'job' ? raw : null;
+    }
+    if (typeof raw.userId !== 'string' || typeof raw.email !== 'string') {
         return null;
     }
     return raw;

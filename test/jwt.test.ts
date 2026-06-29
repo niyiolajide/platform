@@ -102,6 +102,28 @@ describe('verifyPulseToken', () => {
     expect(verifyPulseToken(t)?.userId).toBe('u1')
   })
 
+  it('accepts a user/service token with the expected audience', () => {
+    const t = mintRs256({ ...base, aud: 'finpulse', svc: 'retirementpulse' }, { kid: KID })
+    expect(verifyPulseToken(t, { expectedAud: 'finpulse' })?.email).toBe('a@b.com')
+    expect(verifyPulseToken(t, { expectedAud: 'propertypulse' })).toBeNull()
+  })
+
+  it('rejects job-shaped tokens unless the caller explicitly opts into the job purpose', () => {
+    const t = mintRs256({ iss: 'controlplane', purpose: 'job', aud: 'finpulse', exp: base.exp }, { kid: KID })
+    expect(verifyPulseToken(t)).toBeNull()
+    expect(verifyPulseToken(t, { expectedAud: 'finpulse', expectedPurpose: 'job' })?.purpose).toBe('job')
+  })
+
+  it('rejects job tokens for the wrong audience', () => {
+    const t = mintRs256({ iss: 'controlplane', purpose: 'job', aud: 'finpulse', exp: base.exp }, { kid: KID })
+    expect(verifyPulseToken(t, { expectedAud: 'healthpulse', expectedPurpose: 'job' })).toBeNull()
+  })
+
+  it('rejects ordinary user tokens when a job token is required', () => {
+    const t = mintRs256({ ...base, aud: 'finpulse' }, { kid: KID })
+    expect(verifyPulseToken(t, { expectedAud: 'finpulse', expectedPurpose: 'job' })).toBeNull()
+  })
+
   it('rejects an RS256 token signed by a different (wrong) private key', () => {
     const t = mintRs256({ ...base }, { key: WRONG_PRIV })
     expect(verifyPulseToken(t)).toBeNull()
