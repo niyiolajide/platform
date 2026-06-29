@@ -16,8 +16,9 @@ import { isRevoked } from './store'
 //
 // Claims enforced: `iss==='controlplane'`, RS256 signature, a REQUIRED `exp` (a token
 // with no expiry is rejected — there must be no immortal tokens), `nbf` when present,
-// an optional caller-supplied `expectedAud` (service/job tokens carry an `aud`), and
-// the offline `jti` revocation denylist. A small clock-skew tolerance is allowed.
+// an optional caller-supplied `expectedAud` (service/job tokens carry an `aud`), an
+// explicit `expectedPurpose` for job tokens, and the offline `jti` revocation denylist.
+// A small clock-skew tolerance is allowed.
 
 const CLOCK_SKEW_S = 30
 
@@ -33,12 +34,28 @@ export interface PulseJwtPayload {
   exp?: number
 }
 
+export interface PulseJobJwtPayload {
+  iss: string
+  purpose: 'job'
+  aud?: string | string[]
+  jti?: string
+  iat?: number
+  nbf?: number
+  exp?: number
+}
+
 export interface VerifyPulseTokenOptions {
   /**
    * When set, the token's `aud` must equal (or, for an array `aud`, include) this value.
    * Lets a service/job token scoped for app A be rejected at app B. Omit to skip the check.
    */
   expectedAud?: string
+  /**
+   * Job-dispatch tokens intentionally carry no user identity. They are accepted only
+   * when the caller explicitly asks for the job purpose; ordinary user/session token
+   * callers continue to require `userId` and `email`.
+   */
+  expectedPurpose?: 'job'
 }
 
 function b64urlDecode(s: string): Buffer {
@@ -85,8 +102,16 @@ function verifyRs256(signingInput: string, sig: Buffer, kid: string | undefined)
  */
 export function verifyPulseToken(
   token: string | undefined | null,
+  opts: VerifyPulseTokenOptions & { expectedPurpose: 'job' },
+): PulseJobJwtPayload | null
+export function verifyPulseToken(
+  token: string | undefined | null,
+  opts?: VerifyPulseTokenOptions,
+): PulseJwtPayload | null
+export function verifyPulseToken(
+  token: string | undefined | null,
   opts: VerifyPulseTokenOptions = {},
-): PulseJwtPayload | null {
+): PulseJwtPayload | PulseJobJwtPayload | null {
   if (!token) {return null}
   const parts = token.split('.')
   if (parts.length !== 3) {return null}
@@ -102,7 +127,7 @@ export function verifyPulseToken(
   if (header.alg !== 'RS256') {return null}
   if (!verifyRs256(signingInput, sig, header.kid as string | undefined)) {return null}
 
-  const payload = parsePulsePayload(b64urlJson(payloadB64))
+  const payload = parsePulsePayload(b64urlJson(payloadB64), opts)
   if (payload?.iss !== 'controlplane') {return null}
 
   const now = Date.now() / 1000
@@ -123,9 +148,18 @@ export function verifyPulseToken(
   return payload
 }
 
-function parsePulsePayload(raw: Record<string, unknown> | null): PulseJwtPayload | null {
+function parsePulsePayload(
+  raw: Record<string, unknown> | null,
+  opts: VerifyPulseTokenOptions,
+): PulseJwtPayload | PulseJobJwtPayload | null {
   if (raw == null) {return null}
-  if (typeof raw.userId !== 'string' || typeof raw.email !== 'string' || typeof raw.iss !== 'string') {
+  if (typeof raw.iss !== 'string') {
+    return null
+  }
+  if (opts.expectedPurpose === 'job') {
+    return raw.purpose === 'job' ? raw as unknown as PulseJobJwtPayload : null
+  }
+  if (typeof raw.userId !== 'string' || typeof raw.email !== 'string') {
     return null
   }
   return raw as unknown as PulseJwtPayload

@@ -12,4 +12,4 @@ export {
   revokeJti,
   _clearCache,
 } from './store'
-export { verifyPulseToken, type PulseJwtPayload } from './jwt'
+export { verifyPulseToken, type PulseJobJwtPayload, type PulseJwtPayload } from './jwt'
