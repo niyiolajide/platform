@@ -24,9 +24,10 @@
     "./design-guard": "./design-guard.mjs"
   },
   "bin": {
-    "pulse-design-guard": "./design-guard.mjs"
+    "pulse-design-guard": "./design-guard.mjs",
+    "pulse-sync-nav": "./bin/sync-nav.mjs"
   },
-  "files": ["dist", "src", "design-guard.mjs", "eslint-*.mjs"],
+  "files": ["dist", "src", "bin", "design-guard.mjs", "eslint-*.mjs"],
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "lint": "eslint src eslint-*.mjs design-guard.mjs eslint.config.mjs vitest.config.ts --max-warnings=0",
