@@ -51,11 +51,13 @@ esac
 
 git rev-parse -q --verify "refs/tags/v$NEW" >/dev/null && { echo "ERROR: tag v$NEW already exists" >&2; exit 1; }
 
+# surgical replacement of the top-level "version" line — preserves file formatting
 python3 - "$NEW" <<'EOF'
-import json, sys
-p = json.load(open('package.json'))
-p['version'] = sys.argv[1]
-open('package.json', 'w').write(json.dumps(p, indent=2) + "\n")
+import re, sys
+raw = open('package.json').read()
+new, n = re.subn(r'("version":\s*")[^"]+(")', lambda m: m.group(1) + sys.argv[1] + m.group(2), raw, count=1)
+assert n == 1, 'version field not found'
+open('package.json', 'w').write(new)
 EOF
 
 git add package.json
