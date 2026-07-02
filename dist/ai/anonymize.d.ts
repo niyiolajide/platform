@@ -10,7 +10,7 @@ export interface Anonymizer {
     hasMappings(): boolean;
     /**
      * Title-Case word runs that survived masking across all mask() calls on this
-     * instance — *possible* person names the KNOWN_NAMES allow-list missed (and that
+     * instance — *possible* person names the `maskNames` allow-list missed (and that
      * therefore went to the cloud unmasked). Observability for the allow-list recall
      * gap; the caller attaches these to telemetry for triage. Heuristic + Title-Case-
      * only, so it undercounts. Empty when nothing suspicious survived.

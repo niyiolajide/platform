@@ -11,11 +11,12 @@
 //
 // Direct identifiers (email, phone, SSN, card, IBAN, IP, street address) are
 // matched with deterministic, high-confidence patterns. Person names are matched
-// against a curated allow-list of known people (KNOWN_NAMES) rather than guessed:
-// for a single-user system an explicit list is far more accurate than heuristic
-// NER — it catches lone first names (which models miss) and never mis-flags
-// brands/orgs (e.g. "Capital One", "GEICO") as people. Maintenance = add a person
-// to KNOWN_NAMES when a new contact starts showing up in the data.
+// against a curated allow-list of known people (the hub-managed `maskNames` in
+// control/ai.json) rather than guessed: for a single-user system an explicit list
+// is far more accurate than heuristic NER — it catches lone first names (which
+// models miss) and never mis-flags brands/orgs (e.g. "Capital One", "GEICO") as
+// people. Maintenance = add a person to `maskNames` (hub AI Logs → Names) when a
+// new contact starts showing up in the data.
 
 import { getLogger } from '../config'
 import { readAiSettings } from '../control/store'
@@ -43,22 +44,17 @@ interface Detector {
   accept?: (match: string) => boolean
 }
 
-// ── Known people (the SEED of names that get masked) ──────────────────────────
-// Built-in seed of household members / frequent contacts. The effective allow-list
-// is this seed UNION the hub-managed `maskNames` in control/ai.json (grown from AI
-// Logs triage). Full names and lone first names both work.
-const KNOWN_NAMES: string[] = [
-  'Niyi Olajide',
-  'Wasiu Olajide',
-  'Nina Wang',
-  'Zahrah',
-]
+// ── Known people (the names that get masked) ──────────────────────────────────
+// The allow-list of person names lives ONLY in the hub-managed `maskNames` in
+// control/ai.json (grown from AI Logs triage) — deliberately NOT hardcoded here,
+// since this repo is public. Entries are full names and/or lone first names, e.g.
+// a household would list "Jane Anne Doe", "John Doe", "Jane". Both forms work.
 
 function escapeRe(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }
 
-// Build a longest-first ("Niyi Olajide" wins over a bare "Niyi"), word-bounded,
+// Build a longest-first ("Jane Anne Doe" wins over a bare "Jane"), word-bounded,
 // case-insensitive alternation over `names`. Null when the list is empty.
 function buildNamesRe(names: string[]): RegExp | null {
   if (!names.length) {return null}
@@ -71,12 +67,12 @@ function buildNamesRe(names: string[]): RegExp | null {
   )
 }
 
-// The effective person regex = seed ∪ runtime `maskNames`. Compiled regex is cached
-// by a stable key over the merged set, so it's rebuilt ONLY when the list changes —
+// The effective person regex = runtime `maskNames`. Compiled regex is cached by a
+// stable key over the set, so it's rebuilt ONLY when the list changes —
 // never per call (keeps masking O(text); no per-request recompile, see efficiency note).
 let personCache: { key: string; re: RegExp | null } = { key: '\u0000uninit', re: null }
 function personRegexFor(runtimeNames: string[]): RegExp | null {
-  const all = [...new Set([...KNOWN_NAMES, ...runtimeNames])]
+  const all = [...new Set(runtimeNames)]
   const key = [...all].sort().join('\u0000')
   if (key !== personCache.key) {personCache = { key, re: buildNamesRe(all) }}
   return personCache.re
@@ -84,7 +80,8 @@ function personRegexFor(runtimeNames: string[]): RegExp | null {
 
 // Runtime PII config (names allow-list + warner deny-list) from control/ai.json —
 // read offline + mtime-memoized by the control store, so this is cheap on the hot
-// path. Guarded: NEVER throws — falls back to the built-in seeds if unavailable.
+// path. Guarded: NEVER throws — falls back to empty lists if unavailable (no person
+// masking without the control bundle; direct-identifier detectors still run).
 function readMaskConfig(): { maskNames: string[]; notPersonNames: string[] } {
   try {
     const s = readAiSettings()
@@ -152,11 +149,11 @@ const DETECTORS: Detector[] = [
     re: /\b\d{1,6}\s+(?:[A-Za-z0-9.'-]+\s){0,4}(?:Street|St|Avenue|Ave|Boulevard|Blvd|Road|Rd|Lane|Ln|Drive|Dr|Court|Ct|Way|Place|Pl|Terrace|Ter|Circle|Cir|Parkway|Pkwy|Highway|Hwy)\b\.?/gi,
   },
   // PERSON is applied separately, AFTER these (so its text is tokenized last), from
-  // the runtime allow-list (seed ∪ control maskNames) — see personRegexFor / mask().
+  // the runtime allow-list (control maskNames) — see personRegexFor / mask().
 ]
 
 // ── Recall-gap observability (does NOT mask) ──────────────────────────────────
-// The KNOWN_NAMES allow-list is precise but low-recall: any person NOT on the list
+// The `maskNames` allow-list is precise but low-recall: any person NOT on the list
 // (a transfer counterparty, a doctor, a payee) passes to the cloud unmasked, and
 // today that leak is silent. This warner makes it OBSERVABLE: after masking, it
 // scans for Title-Case word runs (2–3 words) that survived — *possible* unmasked
@@ -208,7 +205,7 @@ export interface Anonymizer {
   hasMappings(): boolean
   /**
    * Title-Case word runs that survived masking across all mask() calls on this
-   * instance — *possible* person names the KNOWN_NAMES allow-list missed (and that
+   * instance — *possible* person names the `maskNames` allow-list missed (and that
    * therefore went to the cloud unmasked). Observability for the allow-list recall
    * gap; the caller attaches these to telemetry for triage. Heuristic + Title-Case-
    * only, so it undercounts. Empty when nothing suspicious survived.

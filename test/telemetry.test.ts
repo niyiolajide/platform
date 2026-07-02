@@ -1,4 +1,8 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import fs from 'fs'
+import os from 'os'
+import path from 'path'
+import { _clearCache } from '../src/control'
 import {
   setAiTelemetrySink,
   recordAiCall,
@@ -28,7 +32,22 @@ function baseRecord(over: Partial<AiCallRecord> = {}): AiCallRecord {
   }
 }
 
-afterEach(() => setAiTelemetrySink(null))
+// Person masking is driven by the hub-managed maskNames in control/ai.json
+// (no hardcoded seed) — point the control store at a fixture with a fictional name.
+let controlDir: string
+
+beforeEach(() => {
+  controlDir = fs.mkdtempSync(path.join(os.tmpdir(), 'telemetry-control-'))
+  fs.writeFileSync(path.join(controlDir, 'ai.json'), JSON.stringify({ maskNames: ['Jane Anne Doe'] }))
+  process.env.CONTROL_DIR = controlDir
+  _clearCache()
+})
+afterEach(() => {
+  setAiTelemetrySink(null)
+  fs.rmSync(controlDir, { recursive: true, force: true })
+  delete process.env.CONTROL_DIR
+  _clearCache()
+})
 
 describe('recordAiCall', () => {
   it('is a no-op when no sink is configured (never throws)', () => {
@@ -56,7 +75,7 @@ describe('recordAiCall', () => {
     setAiTelemetrySink((r) => seen.push(r))
     recordAiCall(
       baseRecord({
-        prompt: 'Email jane.doe@example.com about Niyi Olajide',
+        prompt: 'Email jane.doe@example.com about Jane Anne Doe',
         response: 'Will email jane.doe@example.com',
       }),
     )

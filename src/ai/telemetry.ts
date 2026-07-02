@@ -74,8 +74,8 @@ export interface AiCallRecord {
   response?: string
   /**
    * Title-Case word runs that survived masking — *possible* person names the
-   * KNOWN_NAMES allow-list missed and that therefore reached the provider
-   * unmasked. Surfaced for triage in the Hub's AI Logs (grow KNOWN_NAMES from
+   * `maskNames` allow-list missed and that therefore reached the provider
+   * unmasked. Surfaced for triage in the Hub's AI Logs (grow `maskNames` from
    * these). Heuristic + Title-Case-only → undercounts. Absent/empty when none.
    * NOTE: these are themselves possible PII; they're recorded because they're the
    * triage signal and already appear in the stored `prompt` when payloads are on.

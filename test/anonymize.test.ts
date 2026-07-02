@@ -1,5 +1,28 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import fs from 'fs'
+import os from 'os'
+import path from 'path'
 import { createAnonymizer } from '../src/ai/anonymize'
+import { _clearCache } from '../src/control'
+
+// Person names come ONLY from the hub-managed maskNames in control/ai.json
+// (no hardcoded seed — this repo is public). Fixture with fictional people:
+// 'Jane' alongside 'Jane Anne Doe' exercises the longest-first match.
+const FIXTURE_MASK_NAMES = ['Jane Anne Doe', 'Jane', 'Xenia']
+
+let dir: string
+
+beforeEach(() => {
+  dir = fs.mkdtempSync(path.join(os.tmpdir(), 'anon-control-'))
+  fs.writeFileSync(path.join(dir, 'ai.json'), JSON.stringify({ maskNames: FIXTURE_MASK_NAMES }))
+  process.env.CONTROL_DIR = dir
+  _clearCache()
+})
+afterEach(() => {
+  fs.rmSync(dir, { recursive: true, force: true })
+  delete process.env.CONTROL_DIR
+  _clearCache()
+})
 
 describe('createAnonymizer', () => {
   it('masks direct identifiers and never leaks them in the masked text', () => {
@@ -42,19 +65,27 @@ describe('createAnonymizer', () => {
     expect(tok1).toBe(tok2)
   })
 
-  it('masks only names on the KNOWN_NAMES allow-list, not arbitrary titlecase or brands', () => {
+  it('masks only names on the maskNames allow-list, not arbitrary titlecase or brands', () => {
     const a = createAnonymizer()
-    const masked = a.mask('Zahrah paid Capital One; Sarah Connor was not flagged.')
-    expect(masked).toContain('[PERSON_1]') // Zahrah is on the allow-list
-    expect(masked).not.toContain('Zahrah')
+    const masked = a.mask('Xenia paid Capital One; Sarah Connor was not flagged.')
+    expect(masked).toContain('[PERSON_1]') // Xenia is on the allow-list
+    expect(masked).not.toContain('Xenia')
     expect(masked).toContain('Capital One') // brand/org kept (no heuristic over-masking)
     expect(masked).toContain('Sarah Connor') // unknown name kept (no guessing)
   })
 
   it('matches a full known name in preference to its first name alone', () => {
     const a = createAnonymizer()
-    const masked = a.mask('From Wasiu Olajide')
-    expect(masked).toBe('From [PERSON_1]') // whole "Wasiu Olajide", not "Wasiu" + " Olajide"
+    const masked = a.mask('From Jane Anne Doe')
+    expect(masked).toBe('From [PERSON_1]') // whole name, not "Jane" + " Anne Doe"
+  })
+
+  it('masks no person names when the control bundle is unavailable', () => {
+    fs.rmSync(path.join(dir, 'ai.json'))
+    _clearCache()
+    const a = createAnonymizer()
+    const src = 'Jane Anne Doe met Xenia.'
+    expect(a.mask(src)).toBe(src) // no seed fallback — allow-list is hub-managed only
   })
 
   it('only Luhn-valid card-length digit runs are masked', () => {
