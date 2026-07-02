@@ -6,6 +6,7 @@ export { configurePlatform, getLogger, keys, type PlatformLogger } from './confi
 export * from './finance'
 export * from './ai'
 export * from './notify'
+export * from './jobs'
 export {
   NOTIFY_CHANNEL,
   type NotifyChannel,
