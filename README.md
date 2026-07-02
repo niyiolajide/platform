@@ -38,3 +38,17 @@ npm run typecheck
 npm test
 npm run build   # regenerate dist/ — commit the result
 ```
+
+## Releases
+
+Every release is an annotated tag `vX.Y.Z` on `main`; `package.json` `version` and the tag
+always match. Cut one with:
+
+```bash
+scripts/release.sh minor        # or patch / major / an explicit X.Y.Z
+```
+
+The script refuses to run on a dirty tree, off `main`, out of sync with origin, or when
+`dist/` is older than `src/` (build in Docker via `npm run verify-dist` and commit dist
+first). Consumers pin git SHAs/tags — roll them forward with
+`~/scripts/host-infra/bump-libs.sh`.
