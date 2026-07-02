@@ -9,6 +9,7 @@ const config_1 = require("../config");
 const store_1 = require("../control/store");
 const anonymize_1 = require("./anonymize");
 const models_1 = require("./models");
+const policy_1 = require("./policy");
 const registry_1 = require("./registry");
 const telemetry_1 = require("./telemetry");
 // Per-attempt deadline so a hung call falls through to the next step. Ollama gets a
@@ -39,8 +40,8 @@ async function withTimeout(fn, ms) {
 // Build the ordered, configured step list for a tier. An explicit `pref` provider
 // is stably hoisted to the front; `only` restricts to a single provider (used by
 // the historical single-provider `getProvider`).
-function buildSteps(tier, pref, only) {
-    let steps = (0, store_1.readAiSettings)().cascades[tier].filter((s) => (0, registry_1.getAdapter)(s.provider).configured());
+function buildStepsFromSettings(settings, tier, pref, only) {
+    let steps = settings.cascades[tier].filter((s) => (0, registry_1.getAdapter)(s.provider).configured());
     if (only) {
         steps = steps.filter((s) => s.provider === only);
     }
@@ -49,6 +50,9 @@ function buildSteps(tier, pref, only) {
         steps = [...steps.filter((s) => s.provider === p), ...steps.filter((s) => s.provider !== p)];
     }
     return steps;
+}
+function buildSteps(tier, pref, only) {
+    return buildStepsFromSettings((0, store_1.readAiSettings)(), tier, pref, only);
 }
 function first(items) {
     const [value] = items;
@@ -139,13 +143,14 @@ async function runAttempt(args) {
 async function runCascade(args) {
     const { tier, kind, req, pref, only, onModel } = args;
     const settings = (0, store_1.readAiSettings)();
-    const steps = buildSteps(tier, pref, only);
+    const telemetryApp = req.app ?? process.env.APP_NAME ?? 'unknown';
+    const steps = (0, policy_1.applyDataPolicy)(settings, buildStepsFromSettings(settings, tier, pref, only), telemetryApp);
     if (steps.length === 0) {
         return null;
     }
     // Anonymize ONCE, reused across all cloud attempts. Local (Ollama) steps keep the
     // original text — data never leaves the LAN, so masking would only cost fidelity.
-    const anon = settings.anonymizeRequests ? (0, anonymize_1.createAnonymizer)() : null;
+    const anon = settings.anonymizeRequests || settings.dataPolicy.maskExternalRequests ? (0, anonymize_1.createAnonymizer)() : null;
     const maskedPrompt = anon ? anon.mask(req.prompt) : req.prompt;
     const maskedSystem = anon && req.system != null ? anon.mask(req.system) : req.system;
     const telemetry = makeTelemetryState(settings, tier, req, anon);

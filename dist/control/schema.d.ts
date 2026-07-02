@@ -56,6 +56,67 @@ export declare const CASCADES_SCHEMA: z.ZodDefault<z.ZodObject<{
         model: string;
     }[] | undefined;
 }>>;
+export declare const AI_DOMAIN_ROUTE_SCHEMA: z.ZodObject<{
+    domain: z.ZodString;
+    apps: z.ZodDefault<z.ZodArray<z.ZodString, "many">>;
+    mode: z.ZodDefault<z.ZodEnum<["external-allowed", "local-only"]>>;
+    fallback: z.ZodDefault<z.ZodEnum<["deterministic"]>>;
+}, "strip", z.ZodTypeAny, {
+    domain: string;
+    apps: string[];
+    mode: "external-allowed" | "local-only";
+    fallback: "deterministic";
+}, {
+    domain: string;
+    apps?: string[] | undefined;
+    mode?: "external-allowed" | "local-only" | undefined;
+    fallback?: "deterministic" | undefined;
+}>;
+export type AiDomainRoute = z.infer<typeof AI_DOMAIN_ROUTE_SCHEMA>;
+export declare const DEFAULT_AI_DATA_POLICY: {
+    externalProviders: ProviderKind[];
+    maskExternalRequests: boolean;
+    domainRouting: AiDomainRoute[];
+};
+export declare const AI_DATA_POLICY_SCHEMA: z.ZodDefault<z.ZodObject<{
+    externalProviders: z.ZodDefault<z.ZodArray<z.ZodEnum<["gemini", "anthropic", "ollama"]>, "many">>;
+    maskExternalRequests: z.ZodDefault<z.ZodBoolean>;
+    domainRouting: z.ZodDefault<z.ZodArray<z.ZodObject<{
+        domain: z.ZodString;
+        apps: z.ZodDefault<z.ZodArray<z.ZodString, "many">>;
+        mode: z.ZodDefault<z.ZodEnum<["external-allowed", "local-only"]>>;
+        fallback: z.ZodDefault<z.ZodEnum<["deterministic"]>>;
+    }, "strip", z.ZodTypeAny, {
+        domain: string;
+        apps: string[];
+        mode: "external-allowed" | "local-only";
+        fallback: "deterministic";
+    }, {
+        domain: string;
+        apps?: string[] | undefined;
+        mode?: "external-allowed" | "local-only" | undefined;
+        fallback?: "deterministic" | undefined;
+    }>, "many">>;
+}, "strip", z.ZodTypeAny, {
+    externalProviders: ("gemini" | "anthropic" | "ollama")[];
+    maskExternalRequests: boolean;
+    domainRouting: {
+        domain: string;
+        apps: string[];
+        mode: "external-allowed" | "local-only";
+        fallback: "deterministic";
+    }[];
+}, {
+    externalProviders?: ("gemini" | "anthropic" | "ollama")[] | undefined;
+    maskExternalRequests?: boolean | undefined;
+    domainRouting?: {
+        domain: string;
+        apps?: string[] | undefined;
+        mode?: "external-allowed" | "local-only" | undefined;
+        fallback?: "deterministic" | undefined;
+    }[] | undefined;
+}>>;
+export type AiDataPolicy = z.infer<typeof AI_DATA_POLICY_SCHEMA>;
 export declare const OLLAMA_SCHEMA: z.ZodDefault<z.ZodObject<{
     baseUrl: z.ZodDefault<z.ZodString>;
     keepAlive: z.ZodDefault<z.ZodUnion<[z.ZodString, z.ZodNumber]>>;
@@ -121,6 +182,44 @@ export declare const AI_SETTINGS_SCHEMA: z.ZodObject<{
     anonymizeRequests: z.ZodDefault<z.ZodBoolean>;
     maskNames: z.ZodDefault<z.ZodArray<z.ZodString, "many">>;
     notPersonNames: z.ZodDefault<z.ZodArray<z.ZodString, "many">>;
+    dataPolicy: z.ZodDefault<z.ZodObject<{
+        externalProviders: z.ZodDefault<z.ZodArray<z.ZodEnum<["gemini", "anthropic", "ollama"]>, "many">>;
+        maskExternalRequests: z.ZodDefault<z.ZodBoolean>;
+        domainRouting: z.ZodDefault<z.ZodArray<z.ZodObject<{
+            domain: z.ZodString;
+            apps: z.ZodDefault<z.ZodArray<z.ZodString, "many">>;
+            mode: z.ZodDefault<z.ZodEnum<["external-allowed", "local-only"]>>;
+            fallback: z.ZodDefault<z.ZodEnum<["deterministic"]>>;
+        }, "strip", z.ZodTypeAny, {
+            domain: string;
+            apps: string[];
+            mode: "external-allowed" | "local-only";
+            fallback: "deterministic";
+        }, {
+            domain: string;
+            apps?: string[] | undefined;
+            mode?: "external-allowed" | "local-only" | undefined;
+            fallback?: "deterministic" | undefined;
+        }>, "many">>;
+    }, "strip", z.ZodTypeAny, {
+        externalProviders: ("gemini" | "anthropic" | "ollama")[];
+        maskExternalRequests: boolean;
+        domainRouting: {
+            domain: string;
+            apps: string[];
+            mode: "external-allowed" | "local-only";
+            fallback: "deterministic";
+        }[];
+    }, {
+        externalProviders?: ("gemini" | "anthropic" | "ollama")[] | undefined;
+        maskExternalRequests?: boolean | undefined;
+        domainRouting?: {
+            domain: string;
+            apps?: string[] | undefined;
+            mode?: "external-allowed" | "local-only" | undefined;
+            fallback?: "deterministic" | undefined;
+        }[] | undefined;
+    }>>;
     logAiCalls: z.ZodDefault<z.ZodBoolean>;
     logPayloads: z.ZodDefault<z.ZodBoolean>;
     aiLogRetentionDays: z.ZodDefault<z.ZodNumber>;
@@ -152,6 +251,16 @@ export declare const AI_SETTINGS_SCHEMA: z.ZodObject<{
     anonymizeRequests: boolean;
     maskNames: string[];
     notPersonNames: string[];
+    dataPolicy: {
+        externalProviders: ("gemini" | "anthropic" | "ollama")[];
+        maskExternalRequests: boolean;
+        domainRouting: {
+            domain: string;
+            apps: string[];
+            mode: "external-allowed" | "local-only";
+            fallback: "deterministic";
+        }[];
+    };
     logAiCalls: boolean;
     logPayloads: boolean;
     aiLogRetentionDays: number;
@@ -182,6 +291,16 @@ export declare const AI_SETTINGS_SCHEMA: z.ZodObject<{
     anonymizeRequests?: boolean | undefined;
     maskNames?: string[] | undefined;
     notPersonNames?: string[] | undefined;
+    dataPolicy?: {
+        externalProviders?: ("gemini" | "anthropic" | "ollama")[] | undefined;
+        maskExternalRequests?: boolean | undefined;
+        domainRouting?: {
+            domain: string;
+            apps?: string[] | undefined;
+            mode?: "external-allowed" | "local-only" | undefined;
+            fallback?: "deterministic" | undefined;
+        }[] | undefined;
+    } | undefined;
     logAiCalls?: boolean | undefined;
     logPayloads?: boolean | undefined;
     aiLogRetentionDays?: number | undefined;
@@ -445,7 +564,6 @@ export declare const APPS_SCHEMA: z.ZodObject<{
         }[] | undefined;
     }>, "many">>;
 }, "strip", z.ZodTypeAny, {
-    schemaVersion: number;
     apps: {
         key: string;
         name: string;
@@ -463,8 +581,8 @@ export declare const APPS_SCHEMA: z.ZodObject<{
             tab?: boolean | undefined;
         }[] | undefined;
     }[];
+    schemaVersion: number;
 }, {
-    schemaVersion?: number | undefined;
     apps?: {
         key: string;
         name: string;
@@ -482,5 +600,6 @@ export declare const APPS_SCHEMA: z.ZodObject<{
             tab?: boolean | undefined;
         }[] | undefined;
     }[] | undefined;
+    schemaVersion?: number | undefined;
 }>;
 export type AppsRegistry = z.infer<typeof APPS_SCHEMA>;

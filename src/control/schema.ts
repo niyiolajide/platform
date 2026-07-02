@@ -49,6 +49,40 @@ export const CASCADES_SCHEMA = z
   })
   .default({ main: DEFAULT_CASCADES.main, fast: DEFAULT_CASCADES.fast })
 
+export const AI_DOMAIN_ROUTE_SCHEMA = z.object({
+  domain: z.string().min(1),
+  apps: z.array(z.string().min(1)).default([]),
+  mode: z.enum(['external-allowed', 'local-only']).default('external-allowed'),
+  fallback: z.enum(['deterministic']).default('deterministic'),
+})
+export type AiDomainRoute = z.infer<typeof AI_DOMAIN_ROUTE_SCHEMA>
+
+export const DEFAULT_AI_DATA_POLICY = {
+  externalProviders: ['gemini', 'anthropic'] as ProviderKind[],
+  maskExternalRequests: true,
+  domainRouting: [
+    { domain: 'health', apps: ['healthpulse'], mode: 'local-only', fallback: 'deterministic' },
+    { domain: 'finance', apps: ['finpulse', 'retirementpulse'], mode: 'local-only', fallback: 'deterministic' },
+  ] as AiDomainRoute[],
+}
+
+export const AI_DATA_POLICY_SCHEMA = z
+  .object({
+    // Cloud providers allowed for domains that are not explicitly local-only.
+    // Ollama remains available as the local tail of the cascade.
+    externalProviders: z.array(PROVIDER_KIND).default(DEFAULT_AI_DATA_POLICY.externalProviders),
+    // External model calls must pseudonymize known names from `maskNames` (plus
+    // direct identifiers) before the prompt leaves the host. Kept separate from
+    // the legacy `anonymizeRequests` toggle so the privacy policy stays default-on.
+    maskExternalRequests: z.boolean().default(true),
+    // Per-domain routing knob. `local-only` filters the cascade to local adapters;
+    // when no local adapter is configured the resolver returns null so callers can
+    // use deterministic non-AI fallbacks.
+    domainRouting: z.array(AI_DOMAIN_ROUTE_SCHEMA).default(DEFAULT_AI_DATA_POLICY.domainRouting),
+  })
+  .default(DEFAULT_AI_DATA_POLICY)
+export type AiDataPolicy = z.infer<typeof AI_DATA_POLICY_SCHEMA>
+
 // Local Ollama connection (no API key). `keepAlive` is passed through to Ollama:
 // -1 pins the model in VRAM so the intermittent fallback stays warm (avoids the
 // multi-second cold-load); a string like "30m" or seconds as a number also work.
@@ -75,6 +109,8 @@ export const AI_SETTINGS_SCHEMA = z.object({
   // deny-list). Both default empty → behavior identical to the seed-only allow-list.
   maskNames: z.array(z.string()).default([]),
   notPersonNames: z.array(z.string()).default([]),
+  // Human-authored AI data-sharing policy and machine-enforced domain routing.
+  dataPolicy: AI_DATA_POLICY_SCHEMA,
   // ── AI-call telemetry / logging (hub-managed) ───────────────────────────────
   // When on, runCascade emits an AiCallRecord per attempt to the configured
   // telemetry sink (no-op if unconfigured). When `logPayloads` is on, the record

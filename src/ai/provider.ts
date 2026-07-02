@@ -1,8 +1,9 @@
 import { getLogger } from '../config'
 import { readAiSettings } from '../control/store'
-import type { CascadeStep, ProviderKind } from '../control/schema'
+import type { AiSettings, CascadeStep, ProviderKind } from '../control/schema'
 import { createAnonymizer, type Anonymizer } from './anonymize'
 import { estimateCostCents } from './models'
+import { applyDataPolicy } from './policy'
 import { ADAPTERS, getAdapter } from './registry'
 import { hasAiTelemetrySink, recordAiCall, ulid, type AiCallRecord } from './telemetry'
 import type { AttemptResult, TokenUsage } from './types'
@@ -95,14 +96,18 @@ async function withTimeout<T>(fn: (signal: AbortSignal) => Promise<T>, ms: numbe
 // Build the ordered, configured step list for a tier. An explicit `pref` provider
 // is stably hoisted to the front; `only` restricts to a single provider (used by
 // the historical single-provider `getProvider`).
-function buildSteps(tier: Tier, pref?: string | null, only?: ProviderKind): CascadeStep[] {
-  let steps = readAiSettings().cascades[tier].filter((s) => getAdapter(s.provider).configured())
+function buildStepsFromSettings(settings: AiSettings, tier: Tier, pref?: string | null, only?: ProviderKind): CascadeStep[] {
+  let steps = settings.cascades[tier].filter((s) => getAdapter(s.provider).configured())
   if (only) {steps = steps.filter((s) => s.provider === only)}
   if (pref) {
     const p = pref as ProviderKind
     steps = [...steps.filter((s) => s.provider === p), ...steps.filter((s) => s.provider !== p)]
   }
   return steps
+}
+
+function buildSteps(tier: Tier, pref?: string | null, only?: ProviderKind): CascadeStep[] {
+  return buildStepsFromSettings(readAiSettings(), tier, pref, only)
 }
 
 function first<T>(items: readonly T[]): T | undefined {
@@ -194,12 +199,13 @@ async function runAttempt(args: AttemptArgs): Promise<CascadeOutput | null> {
 async function runCascade(args: RunCascadeArgs): Promise<CascadeOutput | null> {
   const { tier, kind, req, pref, only, onModel } = args
   const settings = readAiSettings()
-  const steps = buildSteps(tier, pref, only)
+  const telemetryApp = req.app ?? process.env.APP_NAME ?? 'unknown'
+  const steps = applyDataPolicy(settings, buildStepsFromSettings(settings, tier, pref, only), telemetryApp)
   if (steps.length === 0) {return null}
 
   // Anonymize ONCE, reused across all cloud attempts. Local (Ollama) steps keep the
   // original text — data never leaves the LAN, so masking would only cost fidelity.
-  const anon: Anonymizer | null = settings.anonymizeRequests ? createAnonymizer() : null
+  const anon: Anonymizer | null = settings.anonymizeRequests || settings.dataPolicy.maskExternalRequests ? createAnonymizer() : null
   const maskedPrompt = anon ? anon.mask(req.prompt) : req.prompt
   const maskedSystem = anon && req.system != null ? anon.mask(req.system) : req.system
   const telemetry = makeTelemetryState(settings, tier, req, anon)

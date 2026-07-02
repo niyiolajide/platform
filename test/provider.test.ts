@@ -67,7 +67,7 @@ afterEach(() => {
 
 // Anonymization off by default in tests unless a case enables it.
 function noAnon() {
-  publishAiSettings(AI_SETTINGS_SCHEMA.parse({ anonymizeRequests: false }))
+  publishAiSettings(AI_SETTINGS_SCHEMA.parse({ anonymizeRequests: false, dataPolicy: { maskExternalRequests: false } }))
   _clearCache()
 }
 
@@ -130,9 +130,54 @@ describe('cascade executor', () => {
     expect(out).toBe('o')
     expect(calls.every((c) => c.kind === 'ollama')).toBe(true)
   })
+
+  it('routes finance and health app calls to local Ollama only', async () => {
+    noAnon()
+    const finance = await resolveAiProvider()!.generateText({ prompt: 'portfolio summary', app: 'finpulse' })
+    const health = await resolveAiProvider()!.generateText({ prompt: 'sleep summary', app: 'healthpulse' })
+    expect(finance).toBe('o')
+    expect(health).toBe('o')
+    expect(calls.map((c) => c.kind)).toEqual(['ollama', 'ollama'])
+  })
+
+  it('returns null for a local-only domain when no local model is configured', async () => {
+    noAnon()
+    ctl.ollama.configured = false
+    const out = await resolveAiProvider()!.generateText({ prompt: 'retirement plan', app: 'retirementpulse' })
+    expect(out).toBeNull()
+    expect(calls).toHaveLength(0)
+  })
+
+  it('keeps external providers available for non-sensitive domains', async () => {
+    noAnon()
+    const out = await resolveAiProvider()!.generateText({ prompt: 'daily brief', app: 'lifepulse' })
+    expect(out).toBe('g')
+    expect(calls[0]).toMatchObject({ kind: 'gemini', model: 'gemini-2.5-pro' })
+  })
+
+  it('filters non-local steps to the configured external provider allow-list', async () => {
+    publishAiSettings(AI_SETTINGS_SCHEMA.parse({
+      anonymizeRequests: false,
+      dataPolicy: { maskExternalRequests: false, externalProviders: ['anthropic'] },
+    }))
+    _clearCache()
+    const out = await resolveAiProvider()!.generateText({ prompt: 'daily brief', app: 'lifepulse' })
+    expect(out).toBe('a')
+    expect(calls[0]).toMatchObject({ kind: 'anthropic', model: 'claude-sonnet-4-6' })
+  })
 })
 
 describe('anonymization policy in the cascade', () => {
+  it('keeps external masking on when the legacy anonymize toggle is off but policy requires it', async () => {
+    publishAiSettings(AI_SETTINGS_SCHEMA.parse({ anonymizeRequests: false }))
+    _clearCache()
+    const prompt = 'Email me at jane@example.com about it'
+    const out = await resolveAiProvider()!.generateText({ prompt, app: 'lifepulse' })
+    expect(out).toBe('g')
+    expect(calls[0].prompt).toContain('[EMAIL_1]')
+    expect(calls[0].prompt).not.toContain('jane@example.com')
+  })
+
   it('masks for cloud steps but sends the original to local Ollama', async () => {
     // anonymize ON (schema default). Force gemini+anthropic to fail so Ollama answers.
     publishAiSettings(AI_SETTINGS_SCHEMA.parse({}))
@@ -165,10 +210,10 @@ describe('cascade telemetry', () => {
     noAnon()
     const seen: AiCallRecord[] = []
     setAiTelemetrySink((r) => seen.push(r))
-    await resolveAiProvider()!.generateText({ prompt: 'hi', app: 'finpulse', purpose: 'digest', userId: 'u9' })
+    await resolveAiProvider()!.generateText({ prompt: 'hi', app: 'lifepulse', purpose: 'digest', userId: 'u9' })
     expect(seen).toHaveLength(1)
     expect(seen[0]).toMatchObject({
-      app: 'finpulse',
+      app: 'lifepulse',
       purpose: 'digest',
       userId: 'u9',
       caller: 'cascade',

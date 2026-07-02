@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.APPS_SCHEMA = exports.APP_INFO_SCHEMA = exports.NAV_ITEM_SCHEMA = exports.REVOCATIONS_SCHEMA = exports.NOTIFY_SETTINGS_SCHEMA = exports.NOTIFY_CHANNEL = exports.AI_SETTINGS_SCHEMA = exports.OLLAMA_SCHEMA = exports.CASCADES_SCHEMA = exports.DEFAULT_CASCADES = exports.CASCADE_STEP_SCHEMA = exports.PROVIDER_KIND = void 0;
+exports.APPS_SCHEMA = exports.APP_INFO_SCHEMA = exports.NAV_ITEM_SCHEMA = exports.REVOCATIONS_SCHEMA = exports.NOTIFY_SETTINGS_SCHEMA = exports.NOTIFY_CHANNEL = exports.AI_SETTINGS_SCHEMA = exports.OLLAMA_SCHEMA = exports.AI_DATA_POLICY_SCHEMA = exports.DEFAULT_AI_DATA_POLICY = exports.AI_DOMAIN_ROUTE_SCHEMA = exports.CASCADES_SCHEMA = exports.DEFAULT_CASCADES = exports.CASCADE_STEP_SCHEMA = exports.PROVIDER_KIND = void 0;
 const zod_1 = require("zod");
 // ── Control-bundle contract ───────────────────────────────────────────────────
 // These zod schemas are the SINGLE source of truth for the files the hub publishes
@@ -43,6 +43,35 @@ exports.CASCADES_SCHEMA = zod_1.z
     fast: zod_1.z.array(exports.CASCADE_STEP_SCHEMA).min(1).default(exports.DEFAULT_CASCADES.fast),
 })
     .default({ main: exports.DEFAULT_CASCADES.main, fast: exports.DEFAULT_CASCADES.fast });
+exports.AI_DOMAIN_ROUTE_SCHEMA = zod_1.z.object({
+    domain: zod_1.z.string().min(1),
+    apps: zod_1.z.array(zod_1.z.string().min(1)).default([]),
+    mode: zod_1.z.enum(['external-allowed', 'local-only']).default('external-allowed'),
+    fallback: zod_1.z.enum(['deterministic']).default('deterministic'),
+});
+exports.DEFAULT_AI_DATA_POLICY = {
+    externalProviders: ['gemini', 'anthropic'],
+    maskExternalRequests: true,
+    domainRouting: [
+        { domain: 'health', apps: ['healthpulse'], mode: 'local-only', fallback: 'deterministic' },
+        { domain: 'finance', apps: ['finpulse', 'retirementpulse'], mode: 'local-only', fallback: 'deterministic' },
+    ],
+};
+exports.AI_DATA_POLICY_SCHEMA = zod_1.z
+    .object({
+    // Cloud providers allowed for domains that are not explicitly local-only.
+    // Ollama remains available as the local tail of the cascade.
+    externalProviders: zod_1.z.array(exports.PROVIDER_KIND).default(exports.DEFAULT_AI_DATA_POLICY.externalProviders),
+    // External model calls must pseudonymize known names from `maskNames` (plus
+    // direct identifiers) before the prompt leaves the host. Kept separate from
+    // the legacy `anonymizeRequests` toggle so the privacy policy stays default-on.
+    maskExternalRequests: zod_1.z.boolean().default(true),
+    // Per-domain routing knob. `local-only` filters the cascade to local adapters;
+    // when no local adapter is configured the resolver returns null so callers can
+    // use deterministic non-AI fallbacks.
+    domainRouting: zod_1.z.array(exports.AI_DOMAIN_ROUTE_SCHEMA).default(exports.DEFAULT_AI_DATA_POLICY.domainRouting),
+})
+    .default(exports.DEFAULT_AI_DATA_POLICY);
 // Local Ollama connection (no API key). `keepAlive` is passed through to Ollama:
 // -1 pins the model in VRAM so the intermittent fallback stays warm (avoids the
 // multi-second cold-load); a string like "30m" or seconds as a number also work.
@@ -68,6 +97,8 @@ exports.AI_SETTINGS_SCHEMA = zod_1.z.object({
     // deny-list). Both default empty → behavior identical to the seed-only allow-list.
     maskNames: zod_1.z.array(zod_1.z.string()).default([]),
     notPersonNames: zod_1.z.array(zod_1.z.string()).default([]),
+    // Human-authored AI data-sharing policy and machine-enforced domain routing.
+    dataPolicy: exports.AI_DATA_POLICY_SCHEMA,
     // ── AI-call telemetry / logging (hub-managed) ───────────────────────────────
     // When on, runCascade emits an AiCallRecord per attempt to the configured
     // telemetry sink (no-op if unconfigured). When `logPayloads` is on, the record

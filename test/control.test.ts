@@ -35,6 +35,12 @@ describe('ai settings', () => {
     expect(s.anthropicModel).toBe('claude-sonnet-4-6')
     expect(s.anthropicModelFast).toBe('claude-haiku-4-5')
     expect(s.cascades.main[0]).toEqual({ provider: 'gemini', model: 'gemini-2.5-pro' })
+    expect(s.dataPolicy.maskExternalRequests).toBe(true)
+    expect(s.dataPolicy.externalProviders).toEqual(['gemini', 'anthropic'])
+    expect(s.dataPolicy.domainRouting).toEqual([
+      { domain: 'health', apps: ['healthpulse'], mode: 'local-only', fallback: 'deterministic' },
+      { domain: 'finance', apps: ['finpulse', 'retirementpulse'], mode: 'local-only', fallback: 'deterministic' },
+    ])
   })
 
   it('env defaults override schema defaults', () => {
@@ -84,6 +90,31 @@ describe('ai settings', () => {
     // Missing fields fall back to schema defaults rather than throwing.
     expect(s.anthropicModel).toBe('claude-sonnet-4-6')
     expect(s.geminiModelFallback).toBe('gemini-2.5-flash-lite')
+    expect(s.dataPolicy.maskExternalRequests).toBe(true)
+  })
+
+  it('publishes and reads custom data policy routing', () => {
+    publishAiSettings(
+      AI_SETTINGS_SCHEMA.parse({
+        dataPolicy: {
+          externalProviders: ['anthropic'],
+          maskExternalRequests: true,
+          domainRouting: [
+            { domain: 'finance', apps: ['finpulse'], mode: 'local-only', fallback: 'deterministic' },
+            { domain: 'journal', apps: ['lifepulse'], mode: 'external-allowed', fallback: 'deterministic' },
+          ],
+        },
+      }),
+    )
+    _clearCache()
+    expect(readAiSettings().dataPolicy).toEqual({
+      externalProviders: ['anthropic'],
+      maskExternalRequests: true,
+      domainRouting: [
+        { domain: 'finance', apps: ['finpulse'], mode: 'local-only', fallback: 'deterministic' },
+        { domain: 'journal', apps: ['lifepulse'], mode: 'external-allowed', fallback: 'deterministic' },
+      ],
+    })
   })
 })
 
