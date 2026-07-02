@@ -134,16 +134,18 @@ describe('cascade executor', () => {
   it('routes finance and health app calls to local Ollama only', async () => {
     noAnon()
     const finance = await resolveAiProvider()!.generateText({ prompt: 'portfolio summary', app: 'finpulse' })
+    const retire = await resolveAiProvider()!.generateText({ prompt: 'retirement plan', app: 'retirepulse' })
     const health = await resolveAiProvider()!.generateText({ prompt: 'sleep summary', app: 'healthpulse' })
     expect(finance).toBe('o')
+    expect(retire).toBe('o')
     expect(health).toBe('o')
-    expect(calls.map((c) => c.kind)).toEqual(['ollama', 'ollama'])
+    expect(calls.map((c) => c.kind)).toEqual(['ollama', 'ollama', 'ollama'])
   })
 
   it('returns null for a local-only domain when no local model is configured', async () => {
     noAnon()
     ctl.ollama.configured = false
-    const out = await resolveAiProvider()!.generateText({ prompt: 'retirement plan', app: 'retirementpulse' })
+    const out = await resolveAiProvider()!.generateText({ prompt: 'retirement plan', app: 'retirepulse' })
     expect(out).toBeNull()
     expect(calls).toHaveLength(0)
   })

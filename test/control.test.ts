@@ -39,7 +39,7 @@ describe('ai settings', () => {
     expect(s.dataPolicy.externalProviders).toEqual(['gemini', 'anthropic'])
     expect(s.dataPolicy.domainRouting).toEqual([
       { domain: 'health', apps: ['healthpulse'], mode: 'local-only', fallback: 'deterministic' },
-      { domain: 'finance', apps: ['finpulse', 'retirementpulse'], mode: 'local-only', fallback: 'deterministic' },
+      { domain: 'finance', apps: ['finpulse', 'retirepulse', 'retirementpulse'], mode: 'local-only', fallback: 'deterministic' },
     ])
   })
 

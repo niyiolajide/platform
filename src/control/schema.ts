@@ -62,7 +62,7 @@ export const DEFAULT_AI_DATA_POLICY = {
   maskExternalRequests: true,
   domainRouting: [
     { domain: 'health', apps: ['healthpulse'], mode: 'local-only', fallback: 'deterministic' },
-    { domain: 'finance', apps: ['finpulse', 'retirementpulse'], mode: 'local-only', fallback: 'deterministic' },
+    { domain: 'finance', apps: ['finpulse', 'retirepulse', 'retirementpulse'], mode: 'local-only', fallback: 'deterministic' },
   ] as AiDomainRoute[],
 }
 
