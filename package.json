@@ -1,21 +1,48 @@
 {
   "name": "@niyi/platform",
-  "version": "0.4.2",
+  "version": "0.10.0",
   "description": "Shared control-plane library for the sibling apps: AI providers, notifications, the control-bundle file-bus, and the edge auth gate.",
   "license": "UNLICENSED",
   "repository": "github:niyiolajide/platform",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {
-    ".": { "types": "./dist/index.d.ts", "default": "./dist/index.js" },
-    "./ai": { "types": "./dist/ai/index.d.ts", "default": "./dist/ai/index.js" },
-    "./notify": { "types": "./dist/notify/index.d.ts", "default": "./dist/notify/index.js" },
-    "./analytics": { "types": "./dist/analytics/index.d.ts", "default": "./dist/analytics/index.js" },
-    "./finance": { "types": "./dist/finance/index.d.ts", "default": "./dist/finance/index.js" },
-    "./control": { "types": "./dist/control/index.d.ts", "default": "./dist/control/index.js" },
-    "./jobs": { "types": "./dist/jobs/index.d.ts", "default": "./dist/jobs/index.js" },
-    "./edge": { "types": "./dist/edge/index.d.ts", "default": "./dist/edge/index.js" },
-    "./isolate": { "types": "./dist/isolate/index.d.ts", "default": "./dist/isolate/index.js" },
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./ai": {
+      "types": "./dist/ai/index.d.ts",
+      "default": "./dist/ai/index.js"
+    },
+    "./notify": {
+      "types": "./dist/notify/index.d.ts",
+      "default": "./dist/notify/index.js"
+    },
+    "./analytics": {
+      "types": "./dist/analytics/index.d.ts",
+      "default": "./dist/analytics/index.js"
+    },
+    "./finance": {
+      "types": "./dist/finance/index.d.ts",
+      "default": "./dist/finance/index.js"
+    },
+    "./control": {
+      "types": "./dist/control/index.d.ts",
+      "default": "./dist/control/index.js"
+    },
+    "./jobs": {
+      "types": "./dist/jobs/index.d.ts",
+      "default": "./dist/jobs/index.js"
+    },
+    "./edge": {
+      "types": "./dist/edge/index.d.ts",
+      "default": "./dist/edge/index.js"
+    },
+    "./isolate": {
+      "types": "./dist/isolate/index.d.ts",
+      "default": "./dist/isolate/index.js"
+    },
     "./eslint": "./eslint-config.mjs",
     "./eslint/base": "./eslint-base.mjs",
     "./eslint/native": "./eslint-native.mjs",
@@ -27,13 +54,19 @@
     "pulse-design-guard": "./design-guard.mjs",
     "pulse-sync-nav": "./bin/sync-nav.mjs"
   },
-  "files": ["dist", "src", "bin", "design-guard.mjs", "eslint-*.mjs"],
+  "files": [
+    "dist",
+    "src",
+    "bin",
+    "design-guard.mjs",
+    "eslint-*.mjs"
+  ],
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "lint": "eslint src eslint-*.mjs design-guard.mjs eslint.config.mjs vitest.config.ts --max-warnings=0",
     "typecheck": "tsc -p tsconfig.build.json --noEmit",
     "test": "vitest run",
-    "verify-dist": "npm run build && git diff --exit-code -- dist || (echo 'dist out of sync with source — run npm run build and commit' && exit 1)"
+    "verify-dist": "npm run build && git diff --exit-code -- dist || (echo 'dist out of sync with source \u2014 run npm run build and commit' && exit 1)"
   },
   "dependencies": {
     "@eslint/eslintrc": "^3.3.1",
@@ -58,8 +91,12 @@
     "next": ">=14"
   },
   "peerDependenciesMeta": {
-    "@google/generative-ai": { "optional": true },
-    "next": { "optional": true }
+    "@google/generative-ai": {
+      "optional": true
+    },
+    "next": {
+      "optional": true
+    }
   },
   "devDependencies": {
     "@anthropic-ai/sdk": "^0.36.0",
