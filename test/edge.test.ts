@@ -4,14 +4,24 @@ import { pulseAuthGate, pulseLoginRedirect, hasPulseToken, type PulseAuthGateOpt
 
 function makeReq(
   path: string,
-  o: { method?: string; cookie?: string; bearer?: string; host?: string; proto?: string } = {},
+  o: {
+    method?: string
+    cookie?: string
+    bearer?: string
+    host?: string
+    proto?: string
+    requestHost?: string
+    requestProto?: 'http' | 'https'
+  } = {},
 ) {
   const headers = new Headers()
   if (o.cookie) {headers.set('cookie', `pulse-token=${o.cookie}`)}
   if (o.bearer) {headers.set('authorization', `Bearer ${o.bearer}`)}
   if (o.host) {headers.set('x-forwarded-host', o.host)}
   if (o.proto) {headers.set('x-forwarded-proto', o.proto)}
-  return new NextRequest(`https://backend.internal${path}`, { method: o.method ?? 'GET', headers })
+  const requestHost = o.requestHost ?? 'backend.internal'
+  const requestProto = o.requestProto ?? 'https'
+  return new NextRequest(`${requestProto}://${requestHost}${path}`, { method: o.method ?? 'GET', headers })
 }
 
 const PROXY = { host: 'media002.tailc29663.ts.net', proto: 'https' }
@@ -63,6 +73,23 @@ describe('pulseAuthGate', () => {
     const res = pulseAuthGate(makeReq('/dashboard'), { ...opts, hubUrlFallback: 'http://localhost:4000' })
     expect(res!.status).toBe(307)
     expect(res!.headers.get('location')).toContain('http://localhost:4000/login')
+  })
+
+  it('falls back to the configured hub URL for direct local requests with self-forwarded headers', () => {
+    const res = pulseAuthGate(
+      makeReq('/', {
+        host: '127.0.0.1:3005',
+        proto: 'http',
+        requestHost: '127.0.0.1:3005',
+        requestProto: 'http',
+      }),
+      { ...opts, basePath: '/home', hubUrlFallback: 'http://localhost:4000' },
+    )
+    expect(res!.status).toBe(307)
+    const location = new URL(res!.headers.get('location')!)
+    expect(location.origin).toBe('http://localhost:4000')
+    expect(location.pathname).toBe('/login')
+    expect(location.searchParams.get('next')).toBe('http://127.0.0.1:3005/home/')
   })
 })
 

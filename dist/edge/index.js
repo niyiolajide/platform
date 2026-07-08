@@ -5,6 +5,26 @@ exports.pulseLoginRedirect = pulseLoginRedirect;
 exports.pulseAuthGate = pulseAuthGate;
 const server_1 = require("next/server");
 const COOKIE = 'pulse-token';
+function splitHostPort(value) {
+    const lower = value.toLowerCase();
+    const lastColon = lower.lastIndexOf(':');
+    if (lastColon <= 0 || lower.includes(']')) {
+        return { host: lower, port: '' };
+    }
+    return { host: lower.slice(0, lastColon), port: lower.slice(lastColon + 1) };
+}
+function sameRequestHost(left, right) {
+    if (left === right) {
+        return true;
+    }
+    const a = splitHostPort(left);
+    const b = splitHostPort(right);
+    if (a.port !== b.port) {
+        return false;
+    }
+    const loopback = new Set(['localhost', '127.0.0.1', '::1']);
+    return loopback.has(a.host) && loopback.has(b.host);
+}
 /** True if the `pulse-token` is present as a cookie or `Authorization: Bearer` header. */
 function hasPulseToken(request) {
     return (Boolean(request.cookies.get(COOKIE)?.value) ||
@@ -24,9 +44,12 @@ function pulseLoginRedirect(request, opts = {}) {
     const { pathname } = request.nextUrl;
     const xfHost = request.headers.get('x-forwarded-host');
     const forwardedProto = request.headers.get('x-forwarded-proto');
-    const fwdHost = xfHost ?? request.headers.get('host');
+    const requestHost = request.headers.get('host') ?? request.nextUrl.host;
+    const fwdHost = xfHost ?? requestHost;
     const fwdProto = forwardedProto ?? request.nextUrl.protocol.replace(':', '');
-    const proxied = xfHost != null || forwardedProto != null;
+    // Next's standalone server can set self-referential x-forwarded-* headers for
+    // direct local app-port requests. Those are not the shared ControlPlane proxy.
+    const proxied = xfHost != null && !sameRequestHost(xfHost, requestHost);
     const hubBase = proxied
         ? `${fwdProto}://${fwdHost}`
         : opts.hubUrlFallback ??

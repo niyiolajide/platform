@@ -10,13 +10,13 @@
 //
 // No host node is required: run it from the platform checkout inside Docker,
 // from the app repo root, e.g.
-//   docker run --rm -v /Users/niyi/scripts:/ws -w /ws/<app> node:20 \
-//     node ../platform/bin/sync-nav.mjs --app <key>
+//   docker run --rm -v /Users/niyi/scripts:/ws -w /ws/apps/<app-dir> node:20 \
+//     node ../../libs/platform/bin/sync-nav.mjs --app <key>
 //
 // Usage:
 //   pulse-sync-nav --app <key> [--control <apps.json>] [--out <file>] [--check]
 //     --app      app key in control/apps.json (required)
-//     --control  path to apps.json            (default ../control/apps.json)
+//     --control  path to apps.json            (default ../../shared/control/apps.json)
 //     --out      generated TS file            (default src/lib/nav.generated.ts)
 //     --check    verify --out is up to date; exit 1 and write nothing if stale
 import fs from 'node:fs'
@@ -32,8 +32,30 @@ function arg(name, fallback = null) {
 
 const CHECK = process.argv.includes('--check')
 const APP = arg('app')
-const CONTROL = path.resolve(arg('control', path.join('..', 'control', 'apps.json')))
+const CONTROL = path.resolve(arg('control', path.join('..', '..', 'shared', 'control', 'apps.json')))
 const OUT = path.resolve(arg('out', path.join('src', 'lib', 'nav.generated.ts')))
+
+function toPosixPath(value) {
+  return value.split(path.sep).join('/')
+}
+
+function dockerWorkdir() {
+  const cwd = path.resolve(process.cwd())
+  if (cwd === '/ws' || cwd.startsWith('/ws/')) {
+    return toPosixPath(cwd)
+  }
+  const marker = `${path.sep}scripts${path.sep}`
+  const index = cwd.lastIndexOf(marker)
+  if (index !== -1) {
+    return `/ws/${toPosixPath(cwd.slice(index + marker.length))}`
+  }
+  return `/ws/apps/${APP}`
+}
+
+function commandPath(target) {
+  const relative = path.relative(process.cwd(), target)
+  return toPosixPath(relative || '.')
+}
 
 if (!APP) {
   console.error('pulse-sync-nav: --app <key> is required')
@@ -84,13 +106,15 @@ function serializeItem(item) {
 
 const items = nav.filter(onWeb)
 const body = items.map(serializeItem).join('\n')
+const commandControl = commandPath(CONTROL)
+const commandWorkdir = dockerWorkdir()
 const generated = `// GENERATED FILE — DO NOT EDIT BY HAND.
 // Fallback nav for "${APP}", generated from control/apps.json (the single nav
 // source-of-truth) by @niyi/platform's pulse-sync-nav. The app's runtime nav
 // still comes from readApps(); this constant is only the offline fallback.
 // Regenerate (from the app repo root, Docker; no host node):
-//   docker run --rm -v /Users/niyi/scripts:/ws -w /ws/$(basename $PWD) node:20 \\
-//     node ../platform/bin/sync-nav.mjs --app ${APP}
+//   docker run --rm -v /Users/niyi/scripts:/ws -w ${commandWorkdir} node:20 \\
+//     node ../../libs/platform/bin/sync-nav.mjs --app ${APP} --control ${commandControl}
 
 export interface ControlNavEntry {
   key?: string

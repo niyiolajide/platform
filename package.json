@@ -1,6 +1,6 @@
 {
   "name": "@niyi/platform",
-  "version": "0.10.0",
+  "version": "0.10.1",
   "description": "Shared control-plane library for the sibling apps: AI providers, notifications, the control-bundle file-bus, and the edge auth gate.",
   "license": "UNLICENSED",
   "repository": "github:niyiolajide/platform",
@@ -66,7 +66,7 @@
     "lint": "eslint src eslint-*.mjs design-guard.mjs eslint.config.mjs vitest.config.ts --max-warnings=0",
     "typecheck": "tsc -p tsconfig.build.json --noEmit",
     "test": "vitest run",
-    "verify-dist": "npm run build && git diff --exit-code -- dist || (echo 'dist out of sync with source \u2014 run npm run build and commit' && exit 1)"
+    "verify-dist": "npm run build && git diff --exit-code -- dist || (echo 'dist out of sync with source — run npm run build and commit' && exit 1)"
   },
   "dependencies": {
     "@eslint/eslintrc": "^3.3.1",
