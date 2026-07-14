@@ -16,7 +16,6 @@ export interface PulsePublicKey {
 export declare const keys: {
     anthropicApiKey: () => string;
     geminiApiKey: () => string;
-    sharedJwtSecret: () => string;
     /**
      * ControlPlane RSA private signing key (PKCS8 PEM), base64-encoded in
      * PULSE_TOKEN_PRIVATE_KEY_B64. Present ONLY in the ControlPlane container — apps

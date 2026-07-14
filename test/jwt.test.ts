@@ -5,6 +5,7 @@ import os from 'os'
 import path from 'path'
 import { verifyPulseToken } from '../src/control/jwt'
 import { revokeJti, _clearCache } from '../src/control'
+import { keys } from '../src/config'
 
 const SECRET = 'test-shared-secret-at-least-32-characters-long'
 
@@ -44,7 +45,6 @@ let dir: string
 beforeEach(() => {
   dir = fs.mkdtempSync(path.join(os.tmpdir(), 'jwt-'))
   process.env.CONTROL_DIR = dir
-  process.env.SHARED_JWT_SECRET = SECRET
   process.env.PULSE_TOKEN_PUBLIC_KEYS = JSON.stringify([
     { kid: KID, pem: Buffer.from(PUB_PEM).toString('base64') },
   ])
@@ -53,6 +53,12 @@ beforeEach(() => {
 afterEach(() => {
   fs.rmSync(dir, { recursive: true, force: true })
   delete process.env.PULSE_TOKEN_PUBLIC_KEYS
+})
+
+describe('retired shared JWT configuration', () => {
+  it('does not expose the retired symmetric signing secret accessor', () => {
+    expect('sharedJwtSecret' in keys).toBe(false)
+  })
 })
 
 describe('verifyPulseToken', () => {

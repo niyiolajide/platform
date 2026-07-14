@@ -37,7 +37,6 @@ export interface PulsePublicKey {
 export const keys = {
   anthropicApiKey: () => process.env.ANTHROPIC_API_KEY ?? '',
   geminiApiKey: () => process.env.GEMINI_API_KEY ?? '',
-  sharedJwtSecret: () => process.env.SHARED_JWT_SECRET ?? '',
 
   /**
    * ControlPlane RSA private signing key (PKCS8 PEM), base64-encoded in

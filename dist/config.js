@@ -27,7 +27,6 @@ function getLogger() {
 exports.keys = {
     anthropicApiKey: () => process.env.ANTHROPIC_API_KEY ?? '',
     geminiApiKey: () => process.env.GEMINI_API_KEY ?? '',
-    sharedJwtSecret: () => process.env.SHARED_JWT_SECRET ?? '',
     /**
      * ControlPlane RSA private signing key (PKCS8 PEM), base64-encoded in
      * PULSE_TOKEN_PRIVATE_KEY_B64. Present ONLY in the ControlPlane container — apps
