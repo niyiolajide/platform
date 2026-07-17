@@ -24,6 +24,16 @@
  *   FinPulse backstops them in `refreshContracts.test.ts`.
  * - Assignment-then-later-await dataflow (`const p = x.invalidateQueries();
  *   await p`) is not tracked; it is always reported.
+ * - `ConditionalExpression`, `LogicalExpression`, and `SequenceExpression`
+ *   composition is not transparent in the bounded ownership walk. Neither are
+ *   TypeScript `TSAsExpression` or `TSNonNullExpression` wrappers. A nested
+ *   invalidateQueries call can therefore be reported even when an outer
+ *   `await` or `return` owns the composed result; the adopter's Task 3 census
+ *   is the backstop for identifying these syntax shapes.
+ * - No-substitution template-literal computed properties (for example,
+ *   ``receiver[`invalidateQueries`]()``) are not recognized. Promise
+ *   combinators are recognized only on an Identifier object, so forms such as
+ *   `globalThis.Promise.all(...)` are also outside the ownership walk.
  * - Arbitrary callback consumers: a concise arrow body is always treated as
  *   owned even if the function it's passed to ignores the return value
  *   (e.g. `setTimeout(() => x.invalidateQueries(), 0)`); syntax alone cannot
