@@ -1,5 +1,6 @@
 import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { noDiscardedInvalidateQueries } from './eslint-rule-no-discarded-invalidate-queries.mjs'
 
 const schedulerPackages = new Set(['node-cron', 'cron', 'node-schedule', 'agenda'])
 const siblingUrlPattern =
@@ -211,6 +212,7 @@ export const platformRules = {
   rules: {
     'no-app-local-scheduler': noAppLocalScheduler,
     'no-client-server-secret-access': noClientServerSecretAccess,
+    'no-discarded-invalidate-queries': noDiscardedInvalidateQueries,
     'no-hardcoded-sibling-url': noHardcodedSiblingUrl,
   },
 }

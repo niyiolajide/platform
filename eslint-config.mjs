@@ -176,6 +176,13 @@ function baseLanguage() {
       'import/no-duplicates': 'error',
       'import/no-self-import': 'error',
       'pulse/no-hardcoded-sibling-url': 'error',
+      // Syntax-only companion to configured type-aware `no-floating-promises`:
+      // that rule flags any discarded promise generically and accepts `void`
+      // as an escape hatch; this one is specific to invalidateQueries()
+      // lifecycle ownership and never accepts `void` as a detach. Default
+      // audited-detach allowlist is empty; adopters configure narrow,
+      // exact-identifier wrapper names via `auditedDetachFunctions`.
+      'pulse/no-discarded-invalidate-queries': 'error',
     },
   }
 }
