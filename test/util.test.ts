@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { parseJsonObject, stripThink, toGeminiSchema } from '../src/ai/util'
+import { Type } from '@google/genai'
 
 describe('parseJsonObject', () => {
   it('extracts a JSON object from surrounding prose', () => {
@@ -28,15 +29,19 @@ describe('toGeminiSchema', () => {
         sentiment: { type: 'string', enum: ['positive', 'negative'] },
         score: { type: 'number' },
         tags: { type: 'array', items: { type: 'string' } },
+        isActive: { type: 'boolean' },
+        count: { type: 'integer' },
       },
       required: ['sentiment'],
     })
     expect(out).toEqual({
-      type: 'object',
+      type: Type.OBJECT,
       properties: {
-        sentiment: { type: 'string', format: 'enum', enum: ['positive', 'negative'] },
-        score: { type: 'number' },
-        tags: { type: 'array', items: { type: 'string' } },
+        sentiment: { type: Type.STRING, format: 'enum', enum: ['positive', 'negative'] },
+        score: { type: Type.NUMBER },
+        tags: { type: Type.ARRAY, items: { type: Type.STRING } },
+        isActive: { type: Type.BOOLEAN },
+        count: { type: Type.INTEGER },
       },
       required: ['sentiment'],
     })

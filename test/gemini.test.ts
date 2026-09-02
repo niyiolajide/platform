@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { Type } from '@google/genai'
 
 const generateContent = vi.fn()
 const constructorOptions: unknown[] = []
@@ -19,7 +20,7 @@ beforeEach(() => {
   generateContent.mockReset()
   warn.mockReset()
   constructorOptions.length = 0
-  vi.doMock('@google/genai', () => ({ GoogleGenAI: MockGoogleGenAI }))
+  vi.doMock('@google/genai', () => ({ GoogleGenAI: MockGoogleGenAI, Type }))
   vi.doMock('../src/config', () => ({
     getLogger: () => ({ warn }),
     keys: { geminiApiKey: () => 'test-key' },
@@ -79,8 +80,8 @@ describe('geminiAdapter', () => {
         thinkingConfig: { thinkingBudget: 0 },
         systemInstruction: 'Return JSON',
         responseSchema: {
-          type: 'object',
-          properties: { ok: { type: 'boolean' } },
+          type: Type.OBJECT,
+          properties: { ok: { type: Type.BOOLEAN } },
           required: ['ok'],
         },
         abortSignal: signal,
