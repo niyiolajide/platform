@@ -1,3 +1,5 @@
+import type { Schema, Type } from '@google/genai'
+
 // Small shared helpers for the JSON-producing providers (Gemini, Ollama).
 
 /** Extract the first JSON object from model text (tolerant of stray prose). */
@@ -21,13 +23,13 @@ export function stripThink(text: string): string {
 // subset the apps use (object/array/string/number/integer/boolean + enum/required/
 // description). Returns null on anything unsupported (anyOf/oneOf/$ref/tuples) so
 // the caller falls back to mime-type-json + prompt-appended schema.
-export function toGeminiSchema(node: unknown): Record<string, unknown> | null {
+export function toGeminiSchema(node: unknown): Schema | null {
   if (node == null || typeof node !== 'object') {return null}
   const n = node as Record<string, unknown>
   const t = n.type
   const desc = typeof n.description === 'string' ? { description: n.description } : {}
   if (t === 'object') {
-    const props: Record<string, unknown> = {}
+    const props: Record<string, Schema> = {}
     const rawProps = n.properties
     if (rawProps != null && (typeof rawProps !== 'object' || Array.isArray(rawProps))) {return null}
     for (const [k, v] of Object.entries(rawProps ?? {})) {
@@ -39,7 +41,7 @@ export function toGeminiSchema(node: unknown): Record<string, unknown> | null {
       ? n.required
       : undefined
     return {
-      type: 'object',
+      type: 'OBJECT' as Type,
       properties: props,
       ...(required != null ? { required } : {}),
       ...desc,
@@ -48,15 +50,21 @@ export function toGeminiSchema(node: unknown): Record<string, unknown> | null {
   if (t === 'array') {
     const items = toGeminiSchema(n.items)
     if (items == null) {return null}
-    return { type: 'array', items, ...desc }
+    return { type: 'ARRAY' as Type, items, ...desc }
   }
   if (t === 'string') {
     return Array.isArray(n.enum)
-      ? { type: 'string', format: 'enum', enum: n.enum, ...desc }
-      : { type: 'string', ...desc }
+      ? { type: 'STRING' as Type, format: 'enum', enum: n.enum, ...desc }
+      : { type: 'STRING' as Type, ...desc }
   }
-  if (t === 'number' || t === 'integer' || t === 'boolean') {
-    return { type: t, ...desc }
+  if (t === 'number') {
+    return { type: 'NUMBER' as Type, ...desc }
+  }
+  if (t === 'integer') {
+    return { type: 'INTEGER' as Type, ...desc }
+  }
+  if (t === 'boolean') {
+    return { type: 'BOOLEAN' as Type, ...desc }
   }
   return null
 }
