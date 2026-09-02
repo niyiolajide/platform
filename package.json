@@ -15,6 +15,10 @@
       "types": "./dist/ai/index.d.ts",
       "default": "./dist/ai/index.js"
     },
+    "./ai-models": {
+      "types": "./dist/ai/models.d.ts",
+      "default": "./dist/ai/models.js"
+    },
     "./notify": {
       "types": "./dist/notify/index.d.ts",
       "default": "./dist/notify/index.js"
