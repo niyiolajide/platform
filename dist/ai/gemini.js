@@ -44,14 +44,14 @@ async function genai() {
     }
     if (!genaiMod) {
         try {
-            genaiMod = await Promise.resolve().then(() => __importStar(require('@google/generative-ai')));
+            genaiMod = await Promise.resolve().then(() => __importStar(require('@google/genai')));
         }
         catch {
-            (0, config_1.getLogger)().warn({}, '[ai/gemini] @google/generative-ai not installed');
+            (0, config_1.getLogger)().warn({}, '[ai/gemini] @google/genai not installed');
             return null;
         }
     }
-    genaiClient ?? (genaiClient = new genaiMod.GoogleGenerativeAI(config_1.keys.geminiApiKey()));
+    genaiClient ?? (genaiClient = new genaiMod.GoogleGenAI({ apiKey: config_1.keys.geminiApiKey() }));
     return genaiClient;
 }
 // gemini-2.5-pro cannot disable "thinking" (thinkingBudget:0 is rejected) and its
@@ -79,34 +79,36 @@ exports.geminiAdapter = {
         // back to mime-type-json + a prompt-appended schema when the schema uses
         // constructs the converter can't express.
         const responseSchema = (0, util_1.toGeminiSchema)(req.jsonSchema);
-        const cfg = geminiGenConfig(model, req.maxTokens ?? 2048, true);
-        const m = client.getGenerativeModel({
-            model,
+        const config = {
+            ...geminiGenConfig(model, req.maxTokens ?? 2048, true),
             ...(req.system ? { systemInstruction: req.system } : {}),
-            generationConfig: { ...cfg, ...(responseSchema ? { responseSchema } : {}) },
-        }, { timeout: 60000 });
+            ...(responseSchema ? { responseSchema } : {}),
+            abortSignal: signal,
+            httpOptions: { timeout: 60000 },
+        };
         const prompt = responseSchema
             ? req.prompt
             : `${req.prompt}\n\nReturn ONLY a JSON object conforming to this JSON Schema (no markdown, no commentary):\n${JSON.stringify(req.jsonSchema)}`;
-        const resp = await m.generateContent(prompt, { signal });
-        return { content: (0, util_1.parseJsonObject)(resp.response.text()), usage: geminiUsage(resp) };
+        const resp = await client.models.generateContent({ model, contents: prompt, config });
+        return { content: (0, util_1.parseJsonObject)(resp.text ?? ''), usage: geminiUsage(resp) };
     },
     async callText(model, req, signal) {
         const client = await genai();
         if (!client) {
             return { content: null };
         }
-        const m = client.getGenerativeModel({
-            model,
+        const config = {
+            ...geminiGenConfig(model, req.maxTokens ?? 1024, false),
             ...(req.system ? { systemInstruction: req.system } : {}),
-            generationConfig: geminiGenConfig(model, req.maxTokens ?? 1024, false),
-        }, { timeout: 60000 });
-        const resp = await m.generateContent(req.prompt, { signal });
-        return { content: resp.response.text().trim() || null, usage: geminiUsage(resp) };
+            abortSignal: signal,
+            httpOptions: { timeout: 60000 },
+        };
+        const resp = await client.models.generateContent({ model, contents: req.prompt, config });
+        return { content: (resp.text ?? '').trim() || null, usage: geminiUsage(resp) };
     },
 };
 // Gemini reports usage on response.usageMetadata (prompt/candidates token counts).
 function geminiUsage(resp) {
-    const u = resp.response?.usageMetadata;
+    const u = resp.usageMetadata;
     return { tokensIn: u?.promptTokenCount ?? undefined, tokensOut: u?.candidatesTokenCount ?? undefined };
 }
