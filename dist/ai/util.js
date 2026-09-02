@@ -1,9 +1,9 @@
 "use strict";
-// Small shared helpers for the JSON-producing providers (Gemini, Ollama).
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.parseJsonObject = parseJsonObject;
 exports.stripThink = stripThink;
 exports.toGeminiSchema = toGeminiSchema;
+// Small shared helpers for the JSON-producing providers (Gemini, Ollama).
 /** Extract the first JSON object from model text (tolerant of stray prose). */
 function parseJsonObject(text) {
     const trimmed = text.trim();
@@ -50,7 +50,7 @@ function toGeminiSchema(node) {
             ? n.required
             : undefined;
         return {
-            type: 'object',
+            type: 'OBJECT',
             properties: props,
             ...(required != null ? { required } : {}),
             ...desc,
@@ -61,15 +61,21 @@ function toGeminiSchema(node) {
         if (items == null) {
             return null;
         }
-        return { type: 'array', items, ...desc };
+        return { type: 'ARRAY', items, ...desc };
     }
     if (t === 'string') {
         return Array.isArray(n.enum)
-            ? { type: 'string', format: 'enum', enum: n.enum, ...desc }
-            : { type: 'string', ...desc };
+            ? { type: 'STRING', format: 'enum', enum: n.enum, ...desc }
+            : { type: 'STRING', ...desc };
     }
-    if (t === 'number' || t === 'integer' || t === 'boolean') {
-        return { type: t, ...desc };
+    if (t === 'number') {
+        return { type: 'NUMBER', ...desc };
+    }
+    if (t === 'integer') {
+        return { type: 'INTEGER', ...desc };
+    }
+    if (t === 'boolean') {
+        return { type: 'BOOLEAN', ...desc };
     }
     return null;
 }

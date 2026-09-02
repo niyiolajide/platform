@@ -1,7 +1,7 @@
 import { getLogger, keys } from '../config'
 import type { AttemptRequest, ProviderAdapter, StructuredAttempt, TokenUsage } from './types'
 import { parseJsonObject, toGeminiSchema } from './util'
-import type * as GoogleGenAi from '@google/generative-ai'
+import type * as GoogleGenAi from '@google/genai'
 
 // Gemini (Google) adapter. Lazily requires the optional peer dep so apps that
 // don't use Gemini need not install it. One attempt per call; throws on API
@@ -9,19 +9,19 @@ import type * as GoogleGenAi from '@google/generative-ai'
 
 type GenAiModule = typeof GoogleGenAi
 let genaiMod: GenAiModule | null = null
-let genaiClient: GoogleGenAi.GoogleGenerativeAI | null = null
+let genaiClient: GoogleGenAi.GoogleGenAI | null = null
 
-async function genai(): Promise<GoogleGenAi.GoogleGenerativeAI | null> {
+async function genai(): Promise<GoogleGenAi.GoogleGenAI | null> {
   if (!keys.geminiApiKey()) {return null}
   if (!genaiMod) {
     try {
-      genaiMod = await import('@google/generative-ai')
+      genaiMod = await import('@google/genai')
     } catch {
-      getLogger().warn({}, '[ai/gemini] @google/generative-ai not installed')
+      getLogger().warn({}, '[ai/gemini] @google/genai not installed')
       return null
     }
   }
-  genaiClient ??= new genaiMod.GoogleGenerativeAI(keys.geminiApiKey())
+  genaiClient ??= new genaiMod.GoogleGenAI({ apiKey: keys.geminiApiKey() })
   return genaiClient
 }
 
@@ -29,7 +29,11 @@ async function genai(): Promise<GoogleGenAi.GoogleGenerativeAI | null> {
 // thinking consumes the output-token budget — so for pro we allow a bounded
 // thinking budget and widen maxOutputTokens to avoid truncation. flash/flash-lite
 // keep thinkingBudget:0 (fastest, no truncation).
-function geminiGenConfig(model: string, maxTokens: number, json: boolean): Record<string, unknown> {
+function geminiGenConfig(
+  model: string,
+  maxTokens: number,
+  json: boolean,
+): GoogleGenAi.GenerateContentConfig {
   const isPro = /pro/i.test(model)
   return {
     ...(json ? { responseMimeType: 'application/json' } : {}),
@@ -50,42 +54,36 @@ export const geminiAdapter: ProviderAdapter = {
     // back to mime-type-json + a prompt-appended schema when the schema uses
     // constructs the converter can't express.
     const responseSchema = toGeminiSchema(req.jsonSchema)
-    const cfg = geminiGenConfig(model, req.maxTokens ?? 2048, true)
-    const m = client.getGenerativeModel(
-      {
-        model,
-        ...(req.system ? { systemInstruction: req.system } : {}),
-        generationConfig: { ...cfg, ...(responseSchema ? { responseSchema } : {}) },
-      },
-      { timeout: 60_000 },
-    )
+    const config: GoogleGenAi.GenerateContentConfig = {
+      ...geminiGenConfig(model, req.maxTokens ?? 2048, true),
+      ...(req.system ? { systemInstruction: req.system } : {}),
+      ...(responseSchema ? { responseSchema } : {}),
+      abortSignal: signal,
+      httpOptions: { timeout: 60_000 },
+    }
     const prompt = responseSchema
       ? req.prompt
       : `${req.prompt}\n\nReturn ONLY a JSON object conforming to this JSON Schema (no markdown, no commentary):\n${JSON.stringify(req.jsonSchema)}`
-    const resp = await m.generateContent(prompt, { signal })
-    return { content: parseJsonObject(resp.response.text()), usage: geminiUsage(resp) }
+    const resp = await client.models.generateContent({ model, contents: prompt, config })
+    return { content: parseJsonObject(resp.text ?? ''), usage: geminiUsage(resp) }
   },
 
   async callText(model, req: AttemptRequest, signal) {
     const client = await genai()
     if (!client) {return { content: null }}
-    const m = client.getGenerativeModel(
-      {
-        model,
-        ...(req.system ? { systemInstruction: req.system } : {}),
-        generationConfig: geminiGenConfig(model, req.maxTokens ?? 1024, false),
-      },
-      { timeout: 60_000 },
-    )
-    const resp = await m.generateContent(req.prompt, { signal })
-    return { content: resp.response.text().trim() || null, usage: geminiUsage(resp) }
+    const config: GoogleGenAi.GenerateContentConfig = {
+      ...geminiGenConfig(model, req.maxTokens ?? 1024, false),
+      ...(req.system ? { systemInstruction: req.system } : {}),
+      abortSignal: signal,
+      httpOptions: { timeout: 60_000 },
+    }
+    const resp = await client.models.generateContent({ model, contents: req.prompt, config })
+    return { content: (resp.text ?? '').trim() || null, usage: geminiUsage(resp) }
   },
 }
 
 // Gemini reports usage on response.usageMetadata (prompt/candidates token counts).
-function geminiUsage(resp: { response?: { usageMetadata?: unknown } }): TokenUsage {
-  const u = resp.response?.usageMetadata as
-    | { promptTokenCount?: number; candidatesTokenCount?: number }
-    | undefined
+function geminiUsage(resp: GoogleGenAi.GenerateContentResponse): TokenUsage {
+  const u = resp.usageMetadata
   return { tokensIn: u?.promptTokenCount ?? undefined, tokensOut: u?.candidatesTokenCount ?? undefined }
 }
