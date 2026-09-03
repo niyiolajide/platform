@@ -9,7 +9,7 @@ export const AI_MODELS = {
     'claude-haiku-4-5',
   ],
   // Ordered best → cheapest.
-  gemini: ['gemini-2.5-pro', 'gemini-2.5-flash', 'gemini-2.5-flash-lite', 'gemini-2.0-flash'],
+  gemini: ['gemini-2.5-pro', 'gemini-3.8-flash', 'gemini-2.5-flash', 'gemini-3.5-flash-lite', 'gemini-2.5-flash-lite'],
   // Local models served by Ollama on media001 (on-LAN; no API key, no anonymization).
   ollama: ['qwen3:30b-a3b', 'qwen3.5:9b'],
 } as const
@@ -45,10 +45,17 @@ export const MODEL_PRICES: ModelPrice[] = [
   { model: 'claude-sonnet-4-6', per1MInCents: 300, per1MOutCents: 1500, since: '2026-01-01' },
   { model: 'claude-haiku-4-5', per1MInCents: 100, per1MOutCents: 500, since: '2026-01-01' },
   // Gemini (Google) — $/MTok (standard ≤200k context tier): pro 1.25/10,
-  // flash 0.30/2.50, flash-lite 0.10/0.40, 2.0-flash 0.10/0.40.
+  // 3.8-flash 0.75/3.75 intro through 2026-12-31 then 1.50/7.50 standard,
+  // flash 0.30/2.50, 3.5-flash-lite 0.30/2.50, flash-lite 0.10/0.40,
+  // 2.0-flash 0.10/0.40 (historical; model no longer served upstream).
   { model: 'gemini-2.5-pro', per1MInCents: 125, per1MOutCents: 1000, since: '2026-01-01' },
+  // gemini-3.8-flash intro pricing per ai.google.dev, valid through 2026-12-31.
+  { model: 'gemini-3.8-flash', per1MInCents: 75, per1MOutCents: 375, since: '2026-09-02' },
+  // Intro pricing expires: standard $1.50/$7.50 per 1M from 2027-01-01 (ai.google.dev).
+  { model: 'gemini-3.8-flash', per1MInCents: 150, per1MOutCents: 750, since: '2027-01-01' },
   { model: 'gemini-2.5-flash-lite', per1MInCents: 10, per1MOutCents: 40, since: '2026-01-01' },
   { model: 'gemini-2.5-flash', per1MInCents: 30, per1MOutCents: 250, since: '2026-01-01' },
+  { model: 'gemini-3.5-flash-lite', per1MInCents: 30, per1MOutCents: 250, since: '2026-09-02' },
   { model: 'gemini-2.0-flash', per1MInCents: 10, per1MOutCents: 40, since: '2026-01-01' },
   // Ollama (local, on-LAN) — no per-token cost.
   { model: 'qwen3:30b-a3b', per1MInCents: 0, per1MOutCents: 0, since: '2026-01-01' },
