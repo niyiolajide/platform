@@ -27,18 +27,22 @@ async function genai(): Promise<GoogleGenAi.GoogleGenAI | null> {
 
 // gemini-2.5-pro cannot disable "thinking" (thinkingBudget:0 is rejected) and its
 // thinking consumes the output-token budget — so for pro we allow a bounded
-// thinking budget and widen maxOutputTokens to avoid truncation. flash/flash-lite
-// keep thinkingBudget:0 (fastest, no truncation).
+// thinking budget and widen maxOutputTokens to avoid truncation. flash keeps
+// thinkingBudget:0 (fastest, no truncation). flash-lite models are the exception:
+// gemini-3.5-flash-lite rejects thinkingConfig.thinkingBudget:0 with 400
+// "invalid argument" (live REST smoke, 2026-09-03) while accepting the field
+// omitted, so flash-lite models get NO thinkingConfig at all.
 function geminiGenConfig(
   model: string,
   maxTokens: number,
   json: boolean,
 ): GoogleGenAi.GenerateContentConfig {
   const isPro = /pro/i.test(model)
+  const isFlashLite = /flash-lite/i.test(model)
   return {
     ...(json ? { responseMimeType: 'application/json' } : {}),
     maxOutputTokens: isPro ? Math.max(maxTokens, 4096) : maxTokens,
-    thinkingConfig: { thinkingBudget: isPro ? 1024 : 0 },
+    ...(isFlashLite ? {} : { thinkingConfig: { thinkingBudget: isPro ? 1024 : 0 } }),
   }
 }
 

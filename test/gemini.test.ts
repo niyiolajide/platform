@@ -118,6 +118,21 @@ describe('geminiAdapter', () => {
     }))
   })
 
+  it('omits thinkingConfig entirely for flash-lite models', async () => {
+    generateContent.mockResolvedValue({ text: 'ok' })
+    const { geminiAdapter } = await import('../src/ai/gemini')
+
+    await geminiAdapter.callText(
+      'gemini-3.5-flash-lite',
+      { prompt: 'hello' },
+      new AbortController().signal,
+    )
+
+    const request = generateContent.mock.calls[0][0]
+    expect(request.model).toBe('gemini-3.5-flash-lite')
+    expect(request.config).not.toHaveProperty('thinkingConfig')
+  })
+
   it('appends unsupported schemas to the prompt while keeping JSON mode', async () => {
     generateContent.mockResolvedValue({ text: '{"value":"yes"}' })
     const { geminiAdapter } = await import('../src/ai/gemini')
