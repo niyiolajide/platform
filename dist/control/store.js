@@ -7,58 +7,29 @@ exports.readAiSettings = readAiSettings;
 exports.aiConfigSource = aiConfigSource;
 exports.readApps = readApps;
 exports.readNotifySettings = readNotifySettings;
-exports.readRevocations = readRevocations;
-exports.isRevoked = isRevoked;
 exports.publishAiSettings = publishAiSettings;
 exports.publishNotifySettings = publishNotifySettings;
-exports.publishRevocations = publishRevocations;
-exports.revokeJti = revokeJti;
 exports._clearCache = _clearCache;
 const fs_1 = __importDefault(require("fs"));
 const path_1 = __importDefault(require("path"));
-const config_1 = require("../config");
+const reader_1 = require("./reader");
+const writer_1 = require("./writer");
 const schema_1 = require("./schema");
 // ── Control-bundle file-bus ───────────────────────────────────────────────────
 // The hub publishes JSON to a shared volume (default /control); apps read it
 // OFFLINE — no network call, so the hub being down never blocks an app. Reads are
-// mtime-cached (cheap on the hot path, near-real-time after a hub edit). Writes are
-// atomic (temp + rename) and only the hub mounts the dir read-write.
+// fingerprint-cached (cheap on the hot path, near-real-time after a hub edit) and
+// validated for snapshot stability (reader.ts); publication is temp + fsync + rename
+// (writer.ts). The security-critical revocation denylist lives in revocations.ts —
+// the bundles here are deliberately TOLERANT: a missing file means env/defaults.
 const CONTROL_DIR = () => process.env.CONTROL_DIR ?? '/control';
-const cache = new Map();
-/** Read + parse a control file, mtime-cached. Returns null if absent/unreadable. */
-function readRaw(file) {
-    const full = path_1.default.join(CONTROL_DIR(), file);
-    let stat;
-    try {
-        stat = fs_1.default.statSync(full);
-    }
-    catch {
-        return null;
-    }
-    const hit = cache.get(file);
-    if (hit?.mtimeMs === stat.mtimeMs) {
-        return hit.value;
-    }
-    try {
-        const value = JSON.parse(fs_1.default.readFileSync(full, 'utf8'));
-        cache.set(file, { mtimeMs: stat.mtimeMs, value });
-        return value;
-    }
-    catch (err) {
-        (0, config_1.getLogger)().warn({ err, file }, '[control] failed to read/parse control file');
-        return null;
-    }
-}
-/** Atomic write of a control file (hub only). */
-function writeRaw(file, value) {
-    const dir = CONTROL_DIR();
-    fs_1.default.mkdirSync(dir, { recursive: true });
-    const full = path_1.default.join(dir, file);
-    const tmp = `${full}.tmp-${process.pid}-${Date.now()}`;
-    fs_1.default.writeFileSync(tmp, JSON.stringify(value, null, 2));
-    fs_1.default.renameSync(tmp, full);
-    cache.delete(file);
-}
+/**
+ * Optional bundles are tolerant by design, but a torn read of a file that DOES exist
+ * must not be mistaken for absence — that silently downgrades a published config to
+ * env defaults. Retry the transient classes; a genuinely absent file still
+ * short-circuits on the first attempt and costs nothing.
+ */
+const OPTIONAL_READ = { attempts: 3, backoffMs: [2, 10] };
 // AI settings: file overrides env defaults; schema applies hard defaults. Tolerant.
 function aiEnvDefaults() {
     return {
@@ -151,7 +122,7 @@ function readAiSettings() {
         return settingsMemo.value;
     }
     const env = aiEnvDefaults();
-    const rawFile = readRaw('ai.json') ?? {};
+    const rawFile = (0, reader_1.readRaw)('ai.json', OPTIONAL_READ) ?? {};
     let settings = schema_1.AI_SETTINGS_SCHEMA.parse({ ...env, ...rawFile });
     // If the file predates `cascades` but set legacy model fields, derive a cascade
     // from them so behavior is preserved until the cascade is published explicitly.
@@ -165,72 +136,26 @@ function readAiSettings() {
 }
 /** Did the AI settings come from the published file or env/defaults? (drift signal) */
 function aiConfigSource() {
-    return readRaw('ai.json') != null ? 'file' : 'env-default';
+    return (0, reader_1.readRaw)('ai.json', OPTIONAL_READ) != null ? 'file' : 'env-default';
 }
 /** The cross-app registry for the shell AppSwitcher (from control/apps.json). */
 function readApps() {
-    const file = readRaw('apps.json') ?? {};
+    const file = (0, reader_1.readRaw)('apps.json', OPTIONAL_READ) ?? {};
     return schema_1.APPS_SCHEMA.parse(file).apps;
 }
 function readNotifySettings() {
-    const file = readRaw('notify.json') ?? {};
+    const file = (0, reader_1.readRaw)('notify.json', OPTIONAL_READ) ?? {};
     return schema_1.NOTIFY_SETTINGS_SCHEMA.parse(file);
-}
-// Revocation is security-critical: if the file is absent or corrupt the denylist is
-// empty, i.e. the system fails OPEN (revoke nothing). That must never be silent — warn
-// loudly (throttled so it doesn't spam the hot path) so a deleted/broken bundle surfaces.
-let lastRevocationsWarnMs = 0;
-function warnRevocationsUnavailable() {
-    const now = Date.now();
-    if (now - lastRevocationsWarnMs < 10 * 60 * 1000) {
-        return;
-    }
-    lastRevocationsWarnMs = now;
-    (0, config_1.getLogger)().warn({ file: 'revocations.json' }, '[control] revocations file absent/unreadable — FAILING OPEN (no tokens are being revoked). ' +
-        'Check the control bundle is published and mounted.');
-}
-function readRevocations() {
-    const raw = readRaw('revocations.json');
-    if (raw == null) {
-        // Absent or unparseable (readRaw already logged a parse error). Surface the
-        // fail-open security impact explicitly, then return an empty (no-op) denylist.
-        warnRevocationsUnavailable();
-        return schema_1.REVOCATIONS_SCHEMA.parse({});
-    }
-    return schema_1.REVOCATIONS_SCHEMA.parse(raw);
-}
-function isRevoked(jti) {
-    if (!jti) {
-        return false;
-    }
-    return readRevocations().revoked.some((r) => r.jti === jti);
 }
 // ── Writers (hub only) ────────────────────────────────────────────────────────
 function publishAiSettings(s) {
-    writeRaw('ai.json', schema_1.AI_SETTINGS_SCHEMA.parse(s));
+    (0, writer_1.writeRaw)('ai.json', schema_1.AI_SETTINGS_SCHEMA.parse(s));
 }
 function publishNotifySettings(s) {
-    writeRaw('notify.json', schema_1.NOTIFY_SETTINGS_SCHEMA.parse(s));
+    (0, writer_1.writeRaw)('notify.json', schema_1.NOTIFY_SETTINGS_SCHEMA.parse(s));
 }
-/** Replace the revocation list, pruning entries whose token has already expired. */
-function publishRevocations(r) {
-    const now = Math.floor(Date.now() / 1000);
-    const pruned = {
-        schemaVersion: r.schemaVersion,
-        revoked: r.revoked.filter((e) => e.exp > now),
-    };
-    writeRaw('revocations.json', schema_1.REVOCATIONS_SCHEMA.parse(pruned));
-}
-/** Add a single jti to the revocation list (hub only). */
-function revokeJti(jti, exp) {
-    const cur = readRevocations();
-    if (cur.revoked.some((e) => e.jti === jti)) {
-        return;
-    }
-    publishRevocations({ schemaVersion: cur.schemaVersion, revoked: [...cur.revoked, { jti, exp }] });
-}
-/** Test/maintenance helper — clears the mtime cache. */
+/** Test/maintenance helper — clears the read caches and the parsed-settings memo. */
 function _clearCache() {
-    cache.clear();
+    (0, reader_1.clearReadCache)();
     settingsMemo = null;
 }

@@ -4,12 +4,17 @@ export {
   aiConfigSource,
   readApps,
   readNotifySettings,
-  readRevocations,
-  isRevoked,
   publishAiSettings,
   publishNotifySettings,
-  publishRevocations,
-  revokeJti,
   _clearCache,
 } from './store'
+export {
+  readRevocations,
+  checkJtiRevocation,
+  type JtiRevocationStatus,
+  RevocationsUnavailableError,
+  isRevoked,
+  publishRevocations,
+  revokeJti,
+} from './revocations'
 export { verifyPulseToken, type PulseJobJwtPayload, type PulseJwtPayload } from './jwt'
