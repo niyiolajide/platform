@@ -365,8 +365,8 @@ export declare const NOTIFY_SETTINGS_SCHEMA: z.ZodObject<{
 }>;
 export type NotifySettings = z.infer<typeof NOTIFY_SETTINGS_SCHEMA>;
 export declare const REVOCATIONS_SCHEMA: z.ZodObject<{
-    schemaVersion: z.ZodDefault<z.ZodNumber>;
-    revoked: z.ZodDefault<z.ZodArray<z.ZodObject<{
+    schemaVersion: z.ZodLiteral<1>;
+    revoked: z.ZodArray<z.ZodObject<{
         jti: z.ZodString;
         exp: z.ZodNumber;
     }, "strip", z.ZodTypeAny, {
@@ -375,19 +375,19 @@ export declare const REVOCATIONS_SCHEMA: z.ZodObject<{
     }, {
         jti: string;
         exp: number;
-    }>, "many">>;
-}, "strip", z.ZodTypeAny, {
-    schemaVersion: number;
+    }>, "many">;
+}, "strict", z.ZodTypeAny, {
+    schemaVersion: 1;
     revoked: {
         jti: string;
         exp: number;
     }[];
 }, {
-    schemaVersion?: number | undefined;
-    revoked?: {
+    schemaVersion: 1;
+    revoked: {
         jti: string;
         exp: number;
-    }[] | undefined;
+    }[];
 }>;
 export type Revocations = z.infer<typeof REVOCATIONS_SCHEMA>;
 export declare const NAV_ITEM_SCHEMA: z.ZodObject<{

@@ -6,7 +6,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.verifyPulseToken = verifyPulseToken;
 const crypto_1 = __importDefault(require("crypto"));
 const config_1 = require("../config");
-const store_1 = require("./store");
+const revocations_1 = require("./revocations");
 // ── Offline pulse-token verification ────────────────────────────────────────────
 // Apps verify the shared pulse-token locally against ControlPlane's published RS256
 // public key(s) (no network call) and additionally check the offline revocation
@@ -110,7 +110,14 @@ function verifyPulseToken(token, opts = {}) {
             return null;
         }
     }
-    if ((0, store_1.isRevoked)(payload.jti)) {
+    // Revocation state is security-critical: accept only a positively known-clear
+    // result. A missing/unstable/corrupt bundle remains unavailable after bounded
+    // reader retries (and past its grace window) and therefore rejects tokens with or
+    // without a jti. Note the converse for a HEALTHY denylist: a token minted with no
+    // jti at all is accepted but is not individually revocable, bounded only by exp and
+    // key rotation. That exemption is enforced by the MINTER, not here — see
+    // checkJtiRevocation. A present-but-blank jti is rejected outright.
+    if ((0, revocations_1.checkJtiRevocation)(payload.jti) !== 'clear') {
         return null;
     }
     return payload;

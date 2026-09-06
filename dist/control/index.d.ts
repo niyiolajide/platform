@@ -1,3 +1,4 @@
 export * from './schema';
-export { readAiSettings, aiConfigSource, readApps, readNotifySettings, readRevocations, isRevoked, publishAiSettings, publishNotifySettings, publishRevocations, revokeJti, _clearCache, } from './store';
+export { readAiSettings, aiConfigSource, readApps, readNotifySettings, publishAiSettings, publishNotifySettings, _clearCache, } from './store';
+export { readRevocations, checkJtiRevocation, type JtiRevocationStatus, RevocationsUnavailableError, isRevoked, publishRevocations, revokeJti, } from './revocations';
 export { verifyPulseToken, type PulseJobJwtPayload, type PulseJwtPayload } from './jwt';
