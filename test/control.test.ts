@@ -616,6 +616,22 @@ describe('revocation publication', () => {
     expect(readRevocations().revoked.map((r) => r.jti).sort()).toEqual(['aaaa', 'bbbb', 'mine'])
   })
 
+  it('does not spend a merge retry on its own history-link ctime change', () => {
+    publishRevocations({ schemaVersion: 1, revoked: [] })
+    const realOpen = fs.openSync.bind(fs)
+    let lockAcquisitions = 0
+    vi.spyOn(fs, 'openSync').mockImplementation(((...args: Parameters<typeof fs.openSync>) => {
+      if (String(args[0]) === lockPath()) {lockAcquisitions += 1}
+      return realOpen(...args)
+    }) as typeof fs.openSync)
+
+    revokeJti('single-attempt', future())
+    expect(readRevocations().revoked.map((r) => r.jti)).toEqual(['single-attempt'])
+    expect(lockAcquisitions).toBe(1)
+    expect(tmpLeftovers()).toEqual([])
+    expect(fs.readdirSync(dir).filter((f) => f.includes('.casbackup-'))).toEqual([])
+  })
+
   it('short-circuits an idempotent re-revocation with zero writes', () => {
     // Re-revoking a jti that is already live (and adds nothing unmerged) must
     // publish nothing: no stage, no rename — both for hot-path cost and to

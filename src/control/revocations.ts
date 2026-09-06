@@ -206,11 +206,12 @@ function tryRevokeJtiAttempt(
   state: { pin: string | null },
 ): boolean {
   return withControlLock('revocations.json', () => {
+    // Pin before reading the fingerprint: our own hardlink updates ctime and
+    // must not consume an attempt intended for actual publication interference.
+    state.pin ??= pinExistingFile('revocations.json')
     const { current, expected } = readRevocationsForWrite()
-    if (expected !== null && state.pin === null) {
-      state.pin = pinExistingFile('revocations.json')
-      if (state.pin === null) {return false}
-    }
+    // A file created after the absent pin probe needs a fresh pinned attempt.
+    if (expected !== null && state.pin === null) {return false}
     const lists: Revocations[] = [current]
     if (state.pin !== null) {
       const pinned = readPinnedRevocations(state.pin)
@@ -221,7 +222,7 @@ function tryRevokeJtiAttempt(
     const next = mergeRevocations([...lists, { schemaVersion: 1, revoked: [{ jti, exp }] }])
     // Nothing new to publish: the live file already holds this exact set, so the
     // pin (when held) adds nothing unmerged and returning now orphans nothing.
-    // This keeps idempotent re-revocation a pure read with zero filesystem writes.
+    // Idempotent re-revocation does no publication; its lock/pin still need cleanup.
     if (sameRevocationContent(next, current)) {return true}
     return guardedPublishRevocations(next, expected, state.pin)
   })
