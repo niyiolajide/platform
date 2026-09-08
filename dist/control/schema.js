@@ -138,12 +138,23 @@ exports.NOTIFY_SETTINGS_SCHEMA = zod_1.z.object({
         .nullable()
         .default(null),
 });
-exports.REVOCATIONS_SCHEMA = zod_1.z.object({
-    schemaVersion: zod_1.z.number().int().default(1),
+// STRICT ON PURPOSE — unlike every other bundle here, this schema must never
+// "successfully" parse a bundle it does not actually understand. Defaults plus a
+// permissive object would turn `{}`, a renamed key, or a future v2 layout into an
+// EMPTY denylist, i.e. silent acceptance of every revoked token — the exact
+// fail-open the reader-side retry work exists to close. So: no defaults, an
+// explicit supported `schemaVersion`, and unknown top-level keys rejected. A shape
+// this reader does not understand lands in the unavailable/deny path instead.
+// (Entry objects stay non-strict so per-entry metadata can be added additively; a
+// renamed/missing `jti` still fails because the field itself is required.)
+exports.REVOCATIONS_SCHEMA = zod_1.z
+    .object({
+    schemaVersion: zod_1.z.literal(1),
     // Revoked pulse-token jti values, each with the token's exp (epoch seconds) so
     // the hub can prune entries once they can no longer be presented.
-    revoked: zod_1.z.array(zod_1.z.object({ jti: zod_1.z.string(), exp: zod_1.z.number().int() })).default([]),
-});
+    revoked: zod_1.z.array(zod_1.z.object({ jti: zod_1.z.string().min(1), exp: zod_1.z.number().int() })),
+})
+    .strict();
 // A single in-app navigation destination. ONE source-of-truth for an app's nav,
 // consumed by every surface (the app's own web sidebar + ⌘K, the unified mobile
 // shell's per-app tabs, the iPad sidebar) so they can't drift. `group` buckets the

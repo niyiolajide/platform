@@ -158,12 +158,23 @@ export const NOTIFY_SETTINGS_SCHEMA = z.object({
 })
 export type NotifySettings = z.infer<typeof NOTIFY_SETTINGS_SCHEMA>
 
-export const REVOCATIONS_SCHEMA = z.object({
-  schemaVersion: z.number().int().default(1),
-  // Revoked pulse-token jti values, each with the token's exp (epoch seconds) so
-  // the hub can prune entries once they can no longer be presented.
-  revoked: z.array(z.object({ jti: z.string(), exp: z.number().int() })).default([]),
-})
+// STRICT ON PURPOSE — unlike every other bundle here, this schema must never
+// "successfully" parse a bundle it does not actually understand. Defaults plus a
+// permissive object would turn `{}`, a renamed key, or a future v2 layout into an
+// EMPTY denylist, i.e. silent acceptance of every revoked token — the exact
+// fail-open the reader-side retry work exists to close. So: no defaults, an
+// explicit supported `schemaVersion`, and unknown top-level keys rejected. A shape
+// this reader does not understand lands in the unavailable/deny path instead.
+// (Entry objects stay non-strict so per-entry metadata can be added additively; a
+// renamed/missing `jti` still fails because the field itself is required.)
+export const REVOCATIONS_SCHEMA = z
+  .object({
+    schemaVersion: z.literal(1),
+    // Revoked pulse-token jti values, each with the token's exp (epoch seconds) so
+    // the hub can prune entries once they can no longer be presented.
+    revoked: z.array(z.object({ jti: z.string().min(1), exp: z.number().int() })),
+  })
+  .strict()
 export type Revocations = z.infer<typeof REVOCATIONS_SCHEMA>
 
 // A single in-app navigation destination. ONE source-of-truth for an app's nav,

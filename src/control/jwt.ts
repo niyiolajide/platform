@@ -1,6 +1,6 @@
 import crypto from 'crypto'
 import { keys } from '../config'
-import { isRevoked } from './store'
+import { checkJtiRevocation } from './revocations'
 
 // ── Offline pulse-token verification ────────────────────────────────────────────
 // Apps verify the shared pulse-token locally against ControlPlane's published RS256
@@ -144,7 +144,14 @@ export function verifyPulseToken(
     const ok = Array.isArray(aud) ? aud.includes(opts.expectedAud) : aud === opts.expectedAud
     if (!ok) {return null}
   }
-  if (isRevoked(payload.jti)) {return null}
+  // Revocation state is security-critical: accept only a positively known-clear
+  // result. A missing/unstable/corrupt bundle remains unavailable after bounded
+  // reader retries (and past its grace window) and therefore rejects tokens with or
+  // without a jti. Note the converse for a HEALTHY denylist: a token minted with no
+  // jti at all is accepted but is not individually revocable, bounded only by exp and
+  // key rotation. That exemption is enforced by the MINTER, not here — see
+  // checkJtiRevocation. A present-but-blank jti is rejected outright.
+  if (checkJtiRevocation(payload.jti) !== 'clear') {return null}
   return payload
 }
 

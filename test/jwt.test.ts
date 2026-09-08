@@ -1,10 +1,10 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import crypto from 'crypto'
 import fs from 'fs'
 import os from 'os'
 import path from 'path'
 import { verifyPulseToken } from '../src/control/jwt'
-import { revokeJti, _clearCache } from '../src/control'
+import { publishRevocations, revokeJti, _clearCache } from '../src/control'
 import { keys } from '../src/config'
 
 const SECRET = 'test-shared-secret-at-least-32-characters-long'
@@ -48,11 +48,15 @@ beforeEach(() => {
   process.env.PULSE_TOKEN_PUBLIC_KEYS = JSON.stringify([
     { kid: KID, pem: Buffer.from(PUB_PEM).toString('base64') },
   ])
+  delete process.env.CONTROL_REVOCATIONS_GRACE_MS
+  publishRevocations({ schemaVersion: 1, revoked: [] })
   _clearCache()
 })
 afterEach(() => {
+  vi.useRealTimers()
   fs.rmSync(dir, { recursive: true, force: true })
   delete process.env.PULSE_TOKEN_PUBLIC_KEYS
+  delete process.env.CONTROL_REVOCATIONS_GRACE_MS
 })
 
 describe('retired shared JWT configuration', () => {
@@ -64,9 +68,98 @@ describe('retired shared JWT configuration', () => {
 describe('verifyPulseToken', () => {
   const base = { userId: 'u1', email: 'a@b.com', iss: 'controlplane', exp: Math.floor(Date.now() / 1000) + 3600 }
 
-  it('accepts a valid RS256 hub token', () => {
+  it('accepts a valid RS256 hub token only while revocation state is available', () => {
     const t = mintRs256({ ...base, jti: 'j1' }, { kid: KID })
     expect(verifyPulseToken(t)?.userId).toBe('u1')
+
+    const revocationsFile = path.join(dir, 'revocations.json')
+    fs.writeFileSync(revocationsFile, '{ invalid json')
+    _clearCache()
+    expect(verifyPulseToken(t)).toBeNull()
+
+    fs.rmSync(revocationsFile)
+    _clearCache()
+    expect(verifyPulseToken(t)).toBeNull()
+  })
+
+  it('recovers once the denylist returns, without a cache reset', () => {
+    process.env.CONTROL_REVOCATIONS_GRACE_MS = '0'
+    const t = mintRs256({ ...base, jti: 'recover-1' }, { kid: KID })
+    expect(verifyPulseToken(t)?.userId).toBe('u1')
+
+    fs.rmSync(path.join(dir, 'revocations.json'))
+    expect(verifyPulseToken(t)).toBeNull()
+
+    // No _clearCache() here on purpose: recovery must come from the reader noticing
+    // the bundle again, not from a test-only cache reset.
+    publishRevocations({ schemaVersion: 1, revoked: [] })
+    expect(verifyPulseToken(t)?.userId).toBe('u1')
+  })
+
+  it('recovers when the bundle is restored by something outside this process', () => {
+    // The test above restores via the library publisher, which invalidates the read
+    // cache for us. Real recovery has no such hook: an operator, a redeploy, or
+    // ControlPlane's own in-place writer just puts the file back.
+    process.env.CONTROL_REVOCATIONS_GRACE_MS = '0'
+    vi.useFakeTimers({ toFake: ['Date', 'performance'], now: Date.now() })
+    const t = mintRs256({ ...base, jti: 'external-1' }, { kid: KID })
+    expect(verifyPulseToken(t)?.userId).toBe('u1')
+
+    const file = path.join(dir, 'revocations.json')
+    fs.rmSync(file)
+    expect(verifyPulseToken(t)).toBeNull()
+
+    fs.writeFileSync(file, JSON.stringify({ schemaVersion: 1, revoked: [] }))
+    vi.advanceTimersByTime(300) // past the remembered-failure window
+    expect(verifyPulseToken(t)?.userId).toBe('u1')
+
+    // ...and the restored bundle is authoritative, including for revocation.
+    fs.writeFileSync(
+      file,
+      JSON.stringify({ schemaVersion: 1, revoked: [{ jti: 'external-1', exp: base.exp }] }),
+    )
+    expect(verifyPulseToken(t)).toBeNull()
+  })
+
+  it('keeps verifying inside the bounded grace window and hard-denies past it', () => {
+    process.env.CONTROL_REVOCATIONS_GRACE_MS = '60000'
+    const t = mintRs256({ ...base, jti: 'grace-1' }, { kid: KID })
+    // Both the grace stamp and its expiry must be read from the same (monotonic) fake
+    // clock, so freeze before the first successful verification.
+    vi.useFakeTimers({ toFake: ['Date', 'performance'], now: Date.now() })
+    expect(verifyPulseToken(t)?.userId).toBe('u1')
+
+    // A /control outage with zero tolerance would lock every session out instantly;
+    // the bounded window trades that for a loud, time-limited stale read.
+    fs.rmSync(path.join(dir, 'revocations.json'))
+    expect(verifyPulseToken(t)?.userId).toBe('u1')
+
+    vi.advanceTimersByTime(61_000)
+    expect(verifyPulseToken(t)).toBeNull()
+  })
+
+  it('accepts a healthy no-jti token but denies it when the denylist is unavailable', () => {
+    process.env.CONTROL_REVOCATIONS_GRACE_MS = '0'
+    const t = mintRs256({ ...base }, { kid: KID })
+    expect(verifyPulseToken(t)?.userId).toBe('u1')
+
+    fs.rmSync(path.join(dir, 'revocations.json'))
+    expect(verifyPulseToken(t)).toBeNull()
+  })
+
+  it('rejects a token whose jti is present but blank', () => {
+    expect(verifyPulseToken(mintRs256({ ...base, jti: '' }, { kid: KID }))).toBeNull()
+    expect(verifyPulseToken(mintRs256({ ...base, jti: '   ' }, { kid: KID }))).toBeNull()
+  })
+
+  it('rejects a token when the denylist has a shape this reader does not understand', () => {
+    const t = mintRs256({ ...base, jti: 'shape-1' }, { kid: KID })
+    expect(verifyPulseToken(t)?.userId).toBe('u1')
+
+    // Parsed leniently this would be an EMPTY denylist, i.e. accept everything.
+    fs.writeFileSync(path.join(dir, 'revocations.json'), JSON.stringify({ schemaVersion: 2, revoked: [] }))
+    _clearCache()
+    expect(verifyPulseToken(t)).toBeNull()
   })
 
   it('rejects a wrong signature', () => {

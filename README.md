@@ -9,8 +9,8 @@ PropertyPulse) and the auth-hub. Single source of truth for:
 - **`@niyi/platform/notify`** — unified Telegram + email + Signal-daemon notifier
   with hub-managed routing / quiet-hours. Never throws.
 - **`@niyi/platform/control`** — the control-bundle file-bus: shared zod schemas
-  (`ai.json` / `notify.json` / `revocations.json`, each versioned), tolerant
-  readers, atomic writers (hub only), and offline `verifyHubToken` + revocation.
+  (`ai.json` / `notify.json` / `revocations.json`, each versioned), bounded
+  readers, guarded writers (hub only), and offline `verifyPulseToken` + revocation.
 
 ## Distribution
 
@@ -52,3 +52,28 @@ The script refuses to run on a dirty tree, off `main`, out of sync with origin, 
 `dist/` is older than `src/` (build in Docker via `npm run verify-dist` and commit dist
 first). Consumers pin git SHAs/tags — roll them forward with
 `~/scripts/host-infra/bump-libs.sh`.
+
+## Revocation failures and publication
+
+`@niyi/platform/control` retries unstable or invalid revocation reads three times
+with short backoff. If no valid snapshot is available, token verification denies
+by default, `checkJtiRevocation()` returns `unavailable`, `isRevoked()` returns
+true, and `readRevocations()` throws `RevocationsUnavailableError`. A missing or
+malformed bundle never becomes an empty denylist.
+
+Operators may explicitly set `CONTROL_REVOCATIONS_GRACE_MS` to allow a previously
+validated snapshot during an outage, capped at 60 seconds. The default, blank or
+invalid value is zero: stale authentication requires a deliberate opt-in. During
+an enabled grace interval, a newly revoked token may still be accepted. A process
+with no previously validated snapshot always denies. The interval uses a monotonic
+clock, and successful local publication invalidates older cached snapshots.
+
+`revokeJti()` merges observed revocations with bounded conflict retries.
+`publishRevocations()` deliberately replaces the list, including un-revoke by
+omission, and throws on observed concurrent interference; callers must re-read
+and deliberately re-issue a conflicted replacement. A successful result proves
+the observed revocations survived the final verification read. Writers that do
+not share the publication lock can still write after that read; this library
+cannot make their independent writes atomic. Exact-file Docker binds continue
+to require their existing publisher, while these reader protections apply to
+all consumers after they adopt this commit.
