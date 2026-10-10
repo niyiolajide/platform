@@ -10,19 +10,33 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 20
-      - run: npm install
-      - name: Typecheck
-        run: npm run typecheck
-      - name: Unit tests
-        run: npm test
-      - name: dist matches source (prebuilt artifact not stale)
+      # Host runtime only: no npm/Node app work runs on the host. Every
+      # install/build/test/lint below runs in Docker node:22-alpine + npm
+      # 12.0.1 per workspace policy (all app builds/tests inside Docker).
+      # NOTE: each Docker step is a pristine node:22-alpine container, so the
+      # npm@12.0.1 pin (and any apk package) must be installed in every step
+      # that needs it — nothing persists across steps.
+      - name: Install dependencies (Docker node22, deterministic lockfile)
         run: |
-          npm run build
-          if ! git diff --quiet -- dist; then
-            echo "::error::dist/ is out of sync with src/. Run 'npm run build' and commit dist."
-            git --no-pager diff --stat -- dist
-            exit 1
-          fi
+          docker run --rm -v ${{ github.workspace }}:/repo -w /repo node:22-alpine \
+            sh -c "npm install -g npm@12.0.1 && npm ci --no-audit --no-fund"
+      - name: Typecheck (Docker node22)
+        run: |
+          docker run --rm -v ${{ github.workspace }}:/repo -w /repo node:22-alpine \
+            sh -c "npm install -g npm@12.0.1 && npm run typecheck"
+      - name: Unit tests (Docker node22)
+        run: |
+          docker run --rm -v ${{ github.workspace }}:/repo -w /repo node:22-alpine \
+            sh -c "npm install -g npm@12.0.1 && npm test"
+      - name: ESLint 8/9 shipped-config compat matrices (Docker node22)
+        run: |
+          docker run --rm -v ${{ github.workspace }}:/repo -w /repo node:22-alpine \
+            sh -c "npm install -g npm@12.0.1 && npx vitest run test/eslint-version-matrices.test.ts test/eslint-shipped-config.test.ts"
+      - name: ESLint 8/9 shipped tarball consumers (Docker node22)
+        run: |
+          docker run --rm -v ${{ github.workspace }}:/repo -w /repo node:22-alpine \
+            sh -c "npm install -g npm@12.0.1 && sh scripts/verify-shipped-consumers.sh"
+      - name: dist matches source (prebuilt artifact not stale, Docker node22)
+        run: |
+          docker run --rm -v ${{ github.workspace }}:/repo -w /repo node:22-alpine \
+            sh -c "npm install -g npm@12.0.1 && apk add --no-cache git && git config --global --add safe.directory /repo && npm run build && git diff --quiet -- dist || (echo '::error::dist/ is out of sync with src/. Run npm run build and commit dist.' && git diff --stat -- dist && exit 1)"

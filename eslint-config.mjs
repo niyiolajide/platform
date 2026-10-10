@@ -1,6 +1,8 @@
 /* eslint-disable max-lines -- central shared policy file intentionally enumerates all rule layers and exported variants. */
-import js from '@eslint/js'
-import nextPlugin from '@next/eslint-plugin-next'
+import jsV8 from '@eslint/js'
+import jsV9 from '@eslint/js-v9'
+import nextPluginV14 from '@next/eslint-plugin-next'
+import nextPluginV16 from '@next/eslint-plugin-next-v16'
 import { existsSync } from 'node:fs'
 import importPlugin from 'eslint-plugin-import'
 import jsxA11y from 'eslint-plugin-jsx-a11y'
@@ -218,11 +220,15 @@ function configFileOverride() {
   }
 }
 
-export function base() {
+// Shared builders parameterized by the JavaScript and Next plugin instances.
+// The v8 entry points below preserve the exact default/ESLint 8 policy; the
+// v9 entry points reuse every shared rule layer and only swap the JS/Next
+// plugin objects (JS 9.39.5, Next plugin 16.4.0).
+function baseWith(jsImpl) {
   return [
     { linterOptions: { reportUnusedDisableDirectives: 'error' } },
     { ignores },
-    js.configs.recommended,
+    jsImpl.configs.recommended,
     baseLanguage(),
     ...typedConfigs(),
     tsOverride(),
@@ -231,15 +237,15 @@ export function base() {
   ]
 }
 
-export function next() {
+function nextWith(jsImpl, nextImpl) {
   return [
-    ...base(),
+    ...baseWith(jsImpl),
     {
       files: JSX_FILES,
-      plugins: { '@next/next': nextPlugin, 'jsx-a11y': jsxA11y },
+      plugins: { '@next/next': nextImpl, 'jsx-a11y': jsxA11y },
       rules: {
-        ...nextPlugin.configs.recommended.rules,
-        ...nextPlugin.configs['core-web-vitals'].rules,
+        ...nextImpl.configs.recommended.rules,
+        ...nextImpl.configs['core-web-vitals'].rules,
         ...(jsxA11y.flatConfigs?.strict?.rules || jsxA11y.configs.strict.rules),
         ...reactHooks.configs.recommended.rules,
         'pulse/no-client-server-secret-access': 'error',
@@ -252,9 +258,9 @@ export function next() {
   ]
 }
 
-export function node() {
+function nodeWith(jsImpl) {
   return [
-    ...base(),
+    ...baseWith(jsImpl),
     {
       files: ['src/**/*.{ts,js,mjs,cjs}', 'scripts/**/*.{ts,js,mjs,cjs}'],
       rules: { 'pulse/no-app-local-scheduler': 'error' },
@@ -262,9 +268,9 @@ export function node() {
   ]
 }
 
-export function native() {
+function nativeWith(jsImpl) {
   return [
-    ...base(),
+    ...baseWith(jsImpl),
     {
       files: ['**/*.{tsx,jsx}'],
       plugins: { 'react-native': reactNative },
@@ -275,6 +281,38 @@ export function native() {
       },
     },
   ]
+}
+
+export function base() {
+  return baseWith(jsV8)
+}
+
+export function baseV9() {
+  return baseWith(jsV9)
+}
+
+export function next() {
+  return nextWith(jsV8, nextPluginV14)
+}
+
+export function nextV9() {
+  return nextWith(jsV9, nextPluginV16)
+}
+
+export function node() {
+  return nodeWith(jsV8)
+}
+
+export function nodeV9() {
+  return nodeWith(jsV9)
+}
+
+export function native() {
+  return nativeWith(jsV8)
+}
+
+export function nativeV9() {
+  return nativeWith(jsV9)
 }
 
 export default next()
