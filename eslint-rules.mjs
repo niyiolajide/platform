@@ -7,8 +7,22 @@ const siblingUrlPattern =
 const siblingServicePattern =
   /https?:\/\/(?:finpulse|healthpulse|lifepulse|homepulse|wisdompulse|photopulse|retirementpulse|propertypulse|controlplane|auth-service|hub|web)(?::|\/)/
 
+// ESLint 8 exposes context.getFilename(); ESLint 9 flat-config rules use
+// context.filename (getFilename is deprecated there). Prefer filename and only
+// fall back when the legacy accessor still exists, so the same rule object
+// executes under both CLIs.
 function filenameOf(context) {
-  return context.filename || context.getFilename()
+  if (typeof context.filename === 'string' && context.filename.length > 0) {return context.filename}
+  if (typeof context.getFilename === 'function') {return context.getFilename()}
+  return '<unknown>'
+}
+
+// ESLint 9 flat-config rules read context.sourceCode; ESLint 8.40+ also
+// exposes it (even in eslintrc mode). Keep a legacy fallback so heartbeat
+// detection works wherever the rule runs.
+function sourceCodeOf(context) {
+  if (context.sourceCode) {return context.sourceCode}
+  return context.getSourceCode()
 }
 
 function normalizePath(file) {
@@ -104,7 +118,7 @@ function isServerIntervalFile(context) {
 }
 
 function isHeartbeatInterval(context, node) {
-  const text = context.sourceCode.getText(node.arguments[0] || node)
+  const text = sourceCodeOf(context).getText(node.arguments[0] || node)
   return /heartbeat|updateHeartbeat/i.test(text)
 }
 
